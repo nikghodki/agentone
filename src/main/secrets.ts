@@ -116,6 +116,9 @@ export class Secrets {
   private getDefaultEncryptor(): Encryptor {
     try {
       const { safeStorage } = require("electron");
+      if (!safeStorage.isEncryptionAvailable()) {
+        throw new Error("Encryption is not available on this system");
+      }
       return safeStorage;
     } catch {
       throw new Error("Electron safeStorage is not available and no encryptor was provided");
