@@ -176,8 +176,9 @@ v1 `conversations`/`messages` tables are reused for the task/chat surface.
 
 ---
 
-## 12. Open Questions (for review)
-1. Onboarding order — framework first then model, as specified. Confirm we never re-surface personas.
-2. For remote frameworks (Phase 4), do we assume the user already runs the framework and only needs connection details, or does the app provision remote infra? (Assumption: connect-only.)
-3. Pre-bundle set — which specific MCP servers/tools per framework? (Defer to Phase 1 with a minimal set: web search + fetch + filesystem.)
-4. Windows support for Rust (zeptoclaw) / Python (hermes) managed installs — acceptable to ship Mac-first? 
+## 12. Resolved Decisions (approved 2026-08-31)
+1. **Personas fully deferred** — v2 onboarding is framework-first then model; the persona/guided-task system is not surfaced.
+2. **Remote frameworks = connect-only** (Phase 4): the user already runs the framework; the app only needs URL + credentials. The app does NOT provision remote infrastructure.
+3. **Pre-bundle set (minimal start):** web search + fetch + filesystem MCP/tools per framework.
+4. **Mac-first**: ship macOS first; Windows support for the Rust (zeptoclaw) / Python (hermes) managed installs is a later addition.
+5. **First implementation plan covers Phase 0 (spike) + Phase 1 (thin slice)**; Phases 2–4 get their own plans.
