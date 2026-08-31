@@ -37,6 +37,22 @@ const api: ElectronAPI = {
 
   getLicenseStatus: () => ipcRenderer.invoke("get-license-status"),
   activateLicense: (key) => ipcRenderer.invoke("activate-license", key),
+
+  deployFramework: (frameworkId, modelBackendId) =>
+    ipcRenderer.invoke("deploy-framework", frameworkId, modelBackendId),
+  sendTask: (deploymentId, input) =>
+    ipcRenderer.invoke("send-task", deploymentId, input),
+  getDeployments: () => ipcRenderer.invoke("get-deployments"),
+  onTaskToken: (callback) => {
+    const handler = (_event: unknown, token: string) => callback(token);
+    ipcRenderer.on("task-token", handler);
+    return () => ipcRenderer.removeListener("task-token", handler);
+  },
+  onTaskStatus: (callback) => {
+    const handler = (_event: unknown, status: string) => callback(status);
+    ipcRenderer.on("task-status", handler);
+    return () => ipcRenderer.removeListener("task-status", handler);
+  },
 };
 
 contextBridge.exposeInMainWorld("electronAPI", api);

@@ -287,6 +287,12 @@ export class Database {
       }));
   }
 
+  updateDeploymentStatus(id: string, status: string): void {
+    this.db
+      .prepare("UPDATE deployments SET status = ? WHERE id = ?")
+      .run(status, id);
+  }
+
   saveModelBackend(b: ModelBackendConfig): void {
     this.db
       .prepare(

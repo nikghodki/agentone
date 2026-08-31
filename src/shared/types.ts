@@ -1,4 +1,4 @@
-import type { FrameworkMeta } from "./v2-types";
+import type { FrameworkMeta, Deployment } from "./v2-types";
 
 export interface AppPaths {
   userData: string;
@@ -116,6 +116,12 @@ export interface ElectronAPI {
 
   getLicenseStatus: () => Promise<"free" | "pro" | "expired">;
   activateLicense: (key: string) => Promise<boolean>;
+
+  deployFramework: (frameworkId: string, modelBackendId: string) => Promise<Deployment>;
+  sendTask: (deploymentId: string, input: string) => Promise<string>;
+  getDeployments: () => Promise<Deployment[]>;
+  onTaskToken: (callback: (token: string) => void) => () => void;
+  onTaskStatus: (callback: (status: string) => void) => () => void;
 }
 
 declare global {
