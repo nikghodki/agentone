@@ -12,14 +12,18 @@ export function SettingsPage() {
 
   useEffect(() => {
     async function load() {
-      const status = await window.electronAPI.getLicenseStatus();
-      setLicenseStatus(status);
+      try {
+        const status = await window.electronAPI.getLicenseStatus();
+        setLicenseStatus(status);
 
-      const model = await window.electronAPI.getModelChoice();
-      setModelName(model.displayName);
+        const model = await window.electronAPI.getModelChoice();
+        setModelName(model.displayName);
 
-      const hw = await window.electronAPI.getHardwareInfo();
-      setHardwareInfo(`${hw.totalRamGB}GB RAM · ${hw.gpuType === "apple-silicon" ? "Apple Silicon" : hw.gpuType === "nvidia" ? "NVIDIA GPU" : "CPU"} · ${hw.platform}`);
+        const hw = await window.electronAPI.getHardwareInfo();
+        setHardwareInfo(`${hw.totalRamGB}GB RAM · ${hw.gpuType === "apple-silicon" ? "Apple Silicon" : hw.gpuType === "nvidia" ? "NVIDIA GPU" : "CPU"} · ${hw.platform}`);
+      } catch (err) {
+        console.error("Failed to load settings data:", err);
+      }
     }
     load();
   }, []);
@@ -33,6 +37,8 @@ export function SettingsPage() {
       if (success) {
         setLicenseStatus("pro");
         setActivationMsg("License activated! You now have unlimited generations.");
+      } else {
+        setActivationMsg("Invalid license key. Please try again.");
       }
     } catch {
       setActivationMsg("Invalid license key. Please try again.");
@@ -41,14 +47,19 @@ export function SettingsPage() {
   }
 
   async function handleResetPersona() {
-    await window.electronAPI.dbSaveProfile({
-      persona: "",
-      priorities: [],
-      licenseKey: null,
-      licenseValidUntil: null,
-    });
-    useAppStore.getState().selectPersona("");
-    setView("onboarding-persona");
+    try {
+      const profile = await window.electronAPI.dbGetProfile();
+      await window.electronAPI.dbSaveProfile({
+        persona: "",
+        priorities: [],
+        licenseKey: profile?.licenseKey ?? null,
+        licenseValidUntil: profile?.licenseValidUntil ?? null,
+      });
+      useAppStore.getState().selectPersona("");
+      setView("onboarding-persona");
+    } catch {
+      setActivationMsg("Couldn't change persona. Please try again.");
+    }
   }
 
   return (
