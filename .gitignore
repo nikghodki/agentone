@@ -4,6 +4,7 @@ release/
 *.db
 models/
 .superpowers/
+spikes/
 
 # Compiled TypeScript output in src (should only be in dist/)
 src/**/*.js
