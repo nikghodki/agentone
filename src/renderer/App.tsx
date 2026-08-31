@@ -1,4 +1,6 @@
 import { useAppStore } from "./store";
+import { SetupPage } from "./pages/SetupPage";
+import { OnboardingPage } from "./pages/OnboardingPage";
 
 function Placeholder({ name }: { name: string }) {
   return (
@@ -13,11 +15,10 @@ export function App() {
 
   switch (view) {
     case "setup":
-      return <Placeholder name="Setup (Hardware + Model Download)" />;
+      return <SetupPage />;
     case "onboarding-persona":
-      return <Placeholder name="Onboarding — Pick Your Persona" />;
     case "onboarding-priorities":
-      return <Placeholder name="Onboarding — Pick Priorities" />;
+      return <OnboardingPage />;
     case "dashboard":
       return <Placeholder name="Dashboard" />;
     case "guided-task":
