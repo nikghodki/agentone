@@ -32,7 +32,7 @@ export class ProcessManager {
     const spawnOpts: SpawnOptions = {
       env: opts.env || {},
       cwd: opts.cwd,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],  // pipe stdin for sendTask()
     };
 
     this.child = this.spawnFn(cmd, args, spawnOpts);
@@ -82,6 +82,14 @@ export class ProcessManager {
    */
   isRunning(): boolean {
     return this.running;
+  }
+
+  /**
+   * Get the child process instance (for accessing stdin/stdout).
+   * Returns null if no process is running.
+   */
+  getChild(): ChildProcess | null {
+    return this.child;
   }
 
   /**

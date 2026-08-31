@@ -2,12 +2,15 @@ import { promises as fs } from "fs";
 import * as path from "path";
 import { exec } from "child_process";
 import { promisify } from "util";
+import { Readable } from "stream";
 import {
   FrameworkAdapter,
   ModelBackendConfig,
   InstalledCapability,
   ChatMessage,
 } from "../../shared/v2-types";
+import { ProcessManager } from "./process-manager";
+import { Secrets } from "../secrets";
 
 const execAsync = promisify(exec);
 
@@ -23,6 +26,13 @@ async function defaultProbe(binaryName: string): Promise<boolean> {
   }
 }
 
+interface ExecResult {
+  stdout: string;
+  stderr: string;
+}
+
+type ExecFunction = (cmd: string) => Promise<ExecResult>;
+
 /**
  * ZeptoclawAdapter implements the FrameworkAdapter interface for ZeptoClaw.
  * This adapter handles installation verification and model backend configuration.
@@ -34,17 +44,30 @@ async function defaultProbe(binaryName: string): Promise<boolean> {
 export class ZeptoclawAdapter implements FrameworkAdapter {
   private configDir: string;
   private probe: (binaryName: string) => Promise<boolean>;
+  private processManager: ProcessManager;
+  private secrets: Secrets | null;
+  private execFn: ExecFunction;
+  private currentBackend: ModelBackendConfig | null = null;
 
   /**
    * @param configDir - Directory where zeptoclaw config.json lives (injectable for tests)
    * @param probe - Function to check if binary exists (injectable for tests)
+   * @param processManager - ProcessManager for spawning child processes (injectable for tests)
+   * @param secrets - Secrets store for API keys (injectable for tests)
+   * @param execFn - Function to execute shell commands (injectable for tests)
    */
   constructor(
     configDir: string = path.join(process.env.HOME || "~", ".zeptoclaw"),
-    probe: (binaryName: string) => Promise<boolean> = defaultProbe
+    probe: (binaryName: string) => Promise<boolean> = defaultProbe,
+    processManager?: ProcessManager,
+    secrets?: Secrets | null,
+    execFn?: ExecFunction
   ) {
     this.configDir = configDir;
     this.probe = probe;
+    this.processManager = processManager || new ProcessManager();
+    this.secrets = secrets !== undefined ? secrets : null;
+    this.execFn = execFn || (execAsync as ExecFunction);
   }
 
   /**
@@ -74,6 +97,9 @@ export class ZeptoclawAdapter implements FrameworkAdapter {
    * SECURITY: Never writes secrets - those are injected via env at start (Task 3).
    */
   async configure(backend: ModelBackendConfig): Promise<void> {
+    // Store backend for use in start()
+    this.currentBackend = backend;
+
     // Ensure config directory exists
     await fs.mkdir(this.configDir, { recursive: true });
 
@@ -145,27 +171,151 @@ export class ZeptoclawAdapter implements FrameworkAdapter {
     }
   }
 
-  // Below methods are stubs for Tasks 3-4 (start, stop, streaming, capabilities)
-
+  /**
+   * Start zeptoclaw agent process via ProcessManager.
+   * Uses sandboxed env with API key injected from Secrets.
+   *
+   * Per verified doc: `zeptoclaw agent` (interactive mode)
+   */
   async start(): Promise<void> {
-    throw new Error("start() not yet implemented (Task 3)");
+    // Build sandboxed env with API key
+    const env: Record<string, string> = {
+      HOME: process.env.HOME || "",
+      PATH: process.env.PATH || "",
+    };
+
+    // Inject API key from secrets if needed
+    if (this.currentBackend?.secretRef && this.secrets) {
+      const apiKey = this.secrets.get(this.currentBackend.secretRef);
+      if (apiKey) {
+        // Map provider to env var name
+        const envVarName = this.getApiKeyEnvVar(this.currentBackend.provider);
+        env[envVarName] = apiKey;
+      }
+    }
+
+    // Spawn zeptoclaw agent
+    this.processManager.start("zeptoclaw", ["agent"], { env });
   }
 
+  /**
+   * Stop the zeptoclaw agent process.
+   */
   async stop(): Promise<void> {
-    throw new Error("stop() not yet implemented (Task 3)");
+    await this.processManager.stop();
   }
 
+  /**
+   * Check if zeptoclaw is healthy via version check.
+   * Per verified doc: `zeptoclaw --version` returns "zeptoclaw 0.9.2"
+   */
   async status(): Promise<string> {
-    throw new Error("status() not yet implemented (Task 3)");
+    try {
+      const result = await this.execFn("zeptoclaw --version");
+      if (result.stdout.includes("zeptoclaw")) {
+        return "healthy";
+      }
+      return "unhealthy: unexpected version output";
+    } catch (error) {
+      return `unhealthy: ${error instanceof Error ? error.message : String(error)}`;
+    }
   }
 
-  async sendTask(_input: string): Promise<void> {
-    throw new Error("sendTask() not yet implemented (Task 3)");
+  /**
+   * Send a task/prompt to the running zeptoclaw agent via stdin.
+   */
+  async sendTask(input: string): Promise<void> {
+    const child = this.processManager.getChild();
+    if (!child || !child.stdin) {
+      throw new Error("Process not running or stdin not available");
+    }
+
+    child.stdin.write(`${input}\n`);
   }
 
-  streamOutput(_cb: (chunk: string) => void): () => void {
-    throw new Error("streamOutput() not yet implemented (Task 3)");
+  /**
+   * Stream output from the running zeptoclaw agent.
+   * Parses stdout with buffering (reuses pattern from openai-compatible.ts).
+   * Filters out spinner animation.
+   *
+   * Returns an unsubscribe function.
+   */
+  streamOutput(cb: (chunk: string) => void): () => void {
+    const child = this.processManager.getChild();
+    if (!child || !child.stdout) {
+      throw new Error("Process not running or stdout not available");
+    }
+
+    let buffer = "";
+    const decoder = new TextDecoder();
+
+    const onData = (chunk: Buffer) => {
+      // Decode chunk and append to buffer
+      buffer += decoder.decode(chunk, { stream: true });
+
+      // Split on newlines and carriage returns
+      const lines = buffer.split(/[\n\r]+/);
+
+      // Keep the last (potentially incomplete) line in buffer
+      buffer = lines.pop() || "";
+
+      // Process complete lines
+      for (const line of lines) {
+        if (!line.trim()) continue;
+
+        // Filter out spinner animation
+        if (this.isSpinnerLine(line)) continue;
+
+        // Emit the line
+        cb(line);
+      }
+    };
+
+    const onEnd = () => {
+      // Flush remaining buffer
+      if (buffer.trim() && !this.isSpinnerLine(buffer)) {
+        cb(buffer);
+      }
+    };
+
+    const stdout = child.stdout;
+
+    stdout.on("data", onData);
+    stdout.once("end", onEnd);
+
+    // Return unsubscribe function
+    return () => {
+      stdout.off("data", onData);
+      stdout.off("end", onEnd);
+    };
   }
+
+  /**
+   * Check if a line is a spinner animation (should be filtered).
+   * Per verified doc: "  ⠋ Thinking..." with animation characters.
+   */
+  private isSpinnerLine(line: string): boolean {
+    // Spinner characters: ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏
+    return /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(line) || line.includes("Thinking");
+  }
+
+  /**
+   * Map provider name to API key env var name.
+   */
+  private getApiKeyEnvVar(provider: string | null): string {
+    switch (provider) {
+      case "anthropic":
+        return "ANTHROPIC_API_KEY";
+      case "openai":
+        return "OPENAI_API_KEY";
+      case "openrouter":
+        return "OPENROUTER_API_KEY";
+      default:
+        return "API_KEY";
+    }
+  }
+
+  // Below methods are stubs for Task 4 (capabilities)
 
   async listCapabilities(): Promise<InstalledCapability[]> {
     throw new Error("listCapabilities() not yet implemented (Task 4)");
