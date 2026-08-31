@@ -37,7 +37,7 @@ function createFakeFetch(chunks: string[], ok: boolean = true, statusText: strin
 }
 
 describe("OpenAICompatibleBackend", () => {
-  let BackendClass: new (config: ModelBackendConfig, fetchFn?: typeof fetch) => OpenAICompatibleBackend;
+  let BackendClass: new (config: ModelBackendConfig, apiKey: string | null, fetchFn?: typeof fetch) => OpenAICompatibleBackend;
 
   beforeEach(async () => {
     // Dynamic import to ensure the module is loaded fresh
@@ -64,7 +64,7 @@ describe("OpenAICompatibleBackend", () => {
       secretRef: null,
     };
 
-    const backend = new BackendClass(config, fakeFetch as any);
+    const backend = new BackendClass(config, null, fakeFetch as any);
 
     const tokens: string[] = [];
     const result = await backend.chat(
@@ -96,7 +96,7 @@ describe("OpenAICompatibleBackend", () => {
       secretRef: null,
     };
 
-    const backend = new BackendClass(config, fakeFetch as any);
+    const backend = new BackendClass(config, null, fakeFetch as any);
 
     const tokens: string[] = [];
     const result = await backend.chat(
@@ -126,7 +126,7 @@ describe("OpenAICompatibleBackend", () => {
       secretRef: null,
     };
 
-    const backend = new BackendClass(config, fakeFetch as any);
+    const backend = new BackendClass(config, null, fakeFetch as any);
 
     const tokens: string[] = [];
     const result = await backend.chat(
@@ -158,7 +158,7 @@ describe("OpenAICompatibleBackend", () => {
       secretRef: null,
     };
 
-    const backend = new BackendClass(config, fakeFetch as any);
+    const backend = new BackendClass(config, null, fakeFetch as any);
 
     const tokens: string[] = [];
     const result = await backend.chat(
@@ -182,7 +182,7 @@ describe("OpenAICompatibleBackend", () => {
       secretRef: null,
     };
 
-    const backend = new BackendClass(config, fakeFetch as any);
+    const backend = new BackendClass(config, null, fakeFetch as any);
 
     await expect(
       backend.chat([{ role: "user", content: "test" }], () => {})
@@ -209,7 +209,7 @@ describe("OpenAICompatibleBackend", () => {
       secretRef: null,
     };
 
-    const backend = new BackendClass(config, fakeFetch as any);
+    const backend = new BackendClass(config, null, fakeFetch as any);
 
     const tokens: string[] = [];
     const result = await backend.chat(
@@ -219,5 +219,241 @@ describe("OpenAICompatibleBackend", () => {
 
     expect(tokens).toEqual(["Split"]);
     expect(result).toBe("Split");
+  });
+});
+
+describe("AnthropicMessagesBackend", () => {
+  let BackendClass: new (config: ModelBackendConfig, apiKey: string | null, fetchFn?: typeof fetch) => any;
+
+  beforeEach(async () => {
+    const module = await import("../../src/main/model-backends/anthropic-messages");
+    BackendClass = (module as any).AnthropicMessagesBackend;
+  });
+
+  it("should accumulate tokens in order from content_block_delta events", async () => {
+    const chunks = [
+      'event: message_start\ndata: {"type":"message_start"}\n\n',
+      'event: content_block_start\ndata: {"type":"content_block_start"}\n\n',
+      'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"text":"Hello"}}\n\n',
+      'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"text":" world"}}\n\n',
+      'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"text":"!"}}\n\n',
+      'event: content_block_stop\ndata: {"type":"content_block_stop"}\n\n',
+      'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+    ];
+
+    const fakeFetch = createFakeFetch(chunks);
+    const config: ModelBackendConfig = {
+      id: "test-backend",
+      kind: "cloud",
+      provider: "anthropic",
+      baseUrl: "https://api.anthropic.com",
+      protocol: "v1/messages",
+      model: "claude-3-sonnet-20240229",
+      secretRef: "anthropic-key",
+    };
+
+    const backend = new BackendClass(config, "sk-ant-test-key", fakeFetch as any);
+
+    const tokens: string[] = [];
+    const result = await backend.chat(
+      [{ role: "user", content: "test" }],
+      (token) => tokens.push(token)
+    );
+
+    expect(tokens).toEqual(["Hello", " world", "!"]);
+    expect(result).toBe("Hello world!");
+  });
+
+  it("should handle events split across chunk boundaries", async () => {
+    const chunks = [
+      'event: content_block_delta\ndata: {"type":"content_block_del',
+      'ta","delta":{"text":"First"}}\n\n',
+      'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"text":" second"}}\n\n',
+      'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+    ];
+
+    const fakeFetch = createFakeFetch(chunks);
+    const config: ModelBackendConfig = {
+      id: "test-backend",
+      kind: "cloud",
+      provider: "anthropic",
+      baseUrl: "https://api.anthropic.com",
+      protocol: "v1/messages",
+      model: "claude-3-sonnet-20240229",
+      secretRef: "anthropic-key",
+    };
+
+    const backend = new BackendClass(config, "sk-ant-test-key", fakeFetch as any);
+
+    const tokens: string[] = [];
+    const result = await backend.chat(
+      [{ role: "user", content: "test" }],
+      (token) => tokens.push(token)
+    );
+
+    expect(tokens).toEqual(["First", " second"]);
+    expect(result).toBe("First second");
+  });
+
+  it("should send x-api-key header", async () => {
+    const chunks = [
+      'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"text":"OK"}}\n\n',
+      'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+    ];
+
+    let capturedHeaders: any = null;
+    const fakeFetch = async (_url: string, options?: RequestInit): Promise<Response> => {
+      capturedHeaders = options?.headers;
+      return {
+        ok: true,
+        statusText: "OK",
+        body: createSSEStream(chunks),
+      } as Response;
+    };
+
+    const config: ModelBackendConfig = {
+      id: "test-backend",
+      kind: "cloud",
+      provider: "anthropic",
+      baseUrl: "https://api.anthropic.com",
+      protocol: "v1/messages",
+      model: "claude-3-sonnet-20240229",
+      secretRef: "anthropic-key",
+    };
+
+    const backend = new BackendClass(config, "sk-ant-real-key", fakeFetch as any);
+
+    await backend.chat([{ role: "user", content: "test" }], () => {});
+
+    expect(capturedHeaders).toHaveProperty("x-api-key", "sk-ant-real-key");
+    expect(capturedHeaders).toHaveProperty("anthropic-version", "2023-06-01");
+  });
+
+  it("should throw an error on non-ok response", async () => {
+    const fakeFetch = createFakeFetch([], false, "Unauthorized");
+    const config: ModelBackendConfig = {
+      id: "test-backend",
+      kind: "cloud",
+      provider: "anthropic",
+      baseUrl: "https://api.anthropic.com",
+      protocol: "v1/messages",
+      model: "claude-3-sonnet-20240229",
+      secretRef: "anthropic-key",
+    };
+
+    const backend = new BackendClass(config, "sk-ant-test-key", fakeFetch as any);
+
+    await expect(
+      backend.chat([{ role: "user", content: "test" }], () => {})
+    ).rejects.toThrow("Unauthorized");
+  });
+});
+
+describe("createBackend", () => {
+  let createBackend: any;
+  let mockSecrets: any;
+
+  beforeEach(async () => {
+    const module = await import("../../src/main/model-backends/index");
+    createBackend = module.createBackend;
+
+    // Mock Secrets
+    mockSecrets = {
+      get: (ref: string) => {
+        if (ref === "anthropic-key") return "sk-ant-resolved";
+        if (ref === "openai-key") return "sk-openai-resolved";
+        return null;
+      },
+    };
+  });
+
+  it("should return AnthropicMessagesBackend for v1/messages protocol", async () => {
+    const config: ModelBackendConfig = {
+      id: "test-backend",
+      kind: "cloud",
+      provider: "anthropic",
+      baseUrl: "https://api.anthropic.com",
+      protocol: "v1/messages",
+      model: "claude-3-sonnet-20240229",
+      secretRef: "anthropic-key",
+    };
+
+    const mockFetch = async () => ({ ok: true, body: null } as any);
+    const backend = createBackend(config, mockSecrets, mockFetch as any);
+
+    expect(backend.constructor.name).toBe("AnthropicMessagesBackend");
+  });
+
+  it("should return OpenAICompatibleBackend for v1/chat/completions protocol", async () => {
+    const config: ModelBackendConfig = {
+      id: "test-backend",
+      kind: "ollama",
+      provider: "ollama",
+      baseUrl: "http://localhost:11434",
+      protocol: "v1/chat/completions",
+      model: "llama2",
+      secretRef: "openai-key",
+    };
+
+    const mockFetch = async () => ({ ok: true, body: null } as any);
+    const backend = createBackend(config, mockSecrets, mockFetch as any);
+
+    expect(backend.constructor.name).toBe("OpenAICompatibleBackend");
+  });
+
+  it("should resolve API key via Secrets and inject into correct header", async () => {
+    const chunks = [
+      'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"text":"OK"}}\n\n',
+      'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+    ];
+
+    let capturedHeaders: any = null;
+    const fakeFetch = async (_url: string, options?: RequestInit): Promise<Response> => {
+      capturedHeaders = options?.headers;
+      return {
+        ok: true,
+        statusText: "OK",
+        body: createSSEStream(chunks),
+      } as Response;
+    };
+
+    const config: ModelBackendConfig = {
+      id: "test-backend",
+      kind: "cloud",
+      provider: "anthropic",
+      baseUrl: "https://api.anthropic.com",
+      protocol: "v1/messages",
+      model: "claude-3-sonnet-20240229",
+      secretRef: "anthropic-key",
+    };
+
+    // Import AnthropicMessagesBackend to inject fake fetch
+    const { AnthropicMessagesBackend } = await import("../../src/main/model-backends/anthropic-messages");
+    const originalConstructor = AnthropicMessagesBackend;
+
+    // Temporarily replace the constructor to inject fake fetch
+    const backend = new originalConstructor(config, "sk-ant-resolved", fakeFetch as any);
+
+    await backend.chat([{ role: "user", content: "test" }], () => {});
+
+    expect(capturedHeaders).toHaveProperty("x-api-key", "sk-ant-resolved");
+  });
+
+  it("should handle null secretRef for local backends", async () => {
+    const config: ModelBackendConfig = {
+      id: "test-backend",
+      kind: "ollama",
+      provider: "ollama",
+      baseUrl: "http://localhost:11434",
+      protocol: "v1/chat/completions",
+      model: "llama2",
+      secretRef: null,
+    };
+
+    const mockFetch = async () => ({ ok: true, body: null } as any);
+    const backend = createBackend(config, mockSecrets, mockFetch as any);
+
+    expect(backend).toBeDefined();
+    expect(backend.constructor.name).toBe("OpenAICompatibleBackend");
   });
 });

@@ -11,10 +11,12 @@ import type { ModelBackend, ChatMessage, ModelBackendConfig } from "../../shared
  */
 export class OpenAICompatibleBackend implements ModelBackend {
   private config: ModelBackendConfig;
+  private apiKey: string | null;
   private fetchFn: typeof fetch;
 
-  constructor(config: ModelBackendConfig, fetchFn?: typeof fetch) {
+  constructor(config: ModelBackendConfig, apiKey: string | null, fetchFn?: typeof fetch) {
     this.config = config;
+    this.apiKey = apiKey;
     this.fetchFn = fetchFn || fetch;
   }
 
@@ -25,7 +27,7 @@ export class OpenAICompatibleBackend implements ModelBackend {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(this.config.secretRef ? { "Authorization": `Bearer ${this.config.secretRef}` } : {}),
+        ...(this.apiKey ? { "Authorization": `Bearer ${this.apiKey}` } : {}),
       },
       body: JSON.stringify({
         model: this.config.model,
