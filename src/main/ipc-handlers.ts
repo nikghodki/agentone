@@ -27,7 +27,7 @@ const deploymentRegistry = new Map<string, DeploymentInstance>();
  * Create a FrameworkAdapter instance based on the frameworkId.
  * Only zeptoclaw is wired for now; other frameworks throw a clear error.
  */
-function createAdapter(frameworkId: string, secrets: Secrets): FrameworkAdapter {
+export function createAdapter(frameworkId: string, secrets: Secrets): FrameworkAdapter {
   if (frameworkId === "zeptoclaw") {
     return new ZeptoclawAdapter(undefined, undefined, undefined, secrets);
   }
@@ -179,14 +179,16 @@ export function registerIpcHandlers(db: Database, rateLimiter: RateLimiter, secr
         // Create orchestrator
         const orchestrator = new CapabilityOrchestrator(adapter, db, deployment.id);
 
-        // Register in deployment registry
-        deploymentRegistry.set(deployment.id, { adapter, orchestrator });
-
         // Update deployment status to ready
         db.updateDeploymentStatus(deployment.id, "ready");
 
+        // Register in deployment registry (only after successful deploy)
+        deploymentRegistry.set(deployment.id, { adapter, orchestrator });
+
         return { ...deployment, status: "ready" };
       } catch (error) {
+        // Clean up any started process (prevent zombie)
+        await adapter.stop().catch(() => {});
         // Mark deployment as failed
         db.updateDeploymentStatus(deployment.id, "failed");
         throw error;
@@ -226,6 +228,10 @@ export function registerIpcHandlers(db: Database, rateLimiter: RateLimiter, secr
 
 export function shutdownServices() {
   ollamaManager?.stop();
+  for (const { adapter } of deploymentRegistry.values()) {
+    adapter.stop().catch(() => {});
+  }
+  deploymentRegistry.clear();
 }
 
 function getLicenseStatus(db: Database): "free" | "pro" | "expired" {

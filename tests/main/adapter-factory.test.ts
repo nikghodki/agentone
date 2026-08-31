@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { ZeptoclawAdapter } from "../../src/main/frameworks/zeptoclaw-adapter";
 import { Secrets } from "../../src/main/secrets";
+import { createAdapter } from "../../src/main/ipc-handlers";
 
 /**
  * Mock encryptor for testing (same as in secrets.test.ts).
@@ -38,17 +39,3 @@ describe("Adapter Factory", () => {
     );
   });
 });
-
-/**
- * Adapter factory function (mirrors the one in ipc-handlers.ts).
- */
-function createAdapter(frameworkId: string, secrets: Secrets) {
-  if (frameworkId === "zeptoclaw") {
-    return new ZeptoclawAdapter(undefined, undefined, undefined, secrets);
-  }
-
-  throw new Error(
-    `Framework "${frameworkId}" is not yet supported. ` +
-    `Only "zeptoclaw" is currently wired for deployment.`
-  );
-}
