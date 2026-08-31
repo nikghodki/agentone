@@ -224,5 +224,102 @@ Hermes supports Ollama as a local model provider. Ollama was also installed and 
 
 ---
 
-**Verified By:** AgentOne v2 Phase 0 Task 1 Spike  
-**Next Steps:** Proceed to Phase 0 Task 2 - Hello World Invocations
+## Interface (VERIFIED - Task 2)
+
+### 1. Invoke + Stream
+
+**One-Shot Command:**
+```bash
+hermes -z "Your prompt here"
+# Outputs only the final response text
+```
+
+**Interactive Mode:**
+```bash
+hermes chat
+# OR
+hermes --tui  # Modern TUI interface
+```
+
+**Streaming:** Hermes streams output to stdout. The `-z/--oneshot` flag suppresses intermediate output and returns only the final response.
+
+**Verified Output:**
+```bash
+$ hermes -z "What is 2+2? Answer in one sentence."
+The answer is 4.
+```
+
+### 2. Model Wiring (Ollama)
+
+**Config File:** `~/.hermes/config.yaml`
+
+**Ollama Configuration:**
+```yaml
+model:
+  default: "llama3.2:3b"
+  provider: "ollama"  # Maps to "custom" internally
+  base_url: "http://localhost:11434/v1"
+```
+
+**Verification:** Tested with `llama3.2:3b` via local Ollama. Successful one-shot response confirmed.
+
+**Provider Aliases:** `"ollama"`, `"vllm"`, `"llamacpp"` all map to `"custom"` provider with OpenAI-compatible API.
+
+**Model Format:** Standard Ollama model names (e.g., `llama3.2:3b`, `mistral:latest`)
+
+**Alternative Local Providers:**
+- `lmstudio`: First-class support with dedicated provider
+- `custom`: Any OpenAI-compatible endpoint with explicit `base_url`
+
+### 3. Capability Commands
+
+**Skills Installation:**
+```bash
+# Search for skills
+hermes skills search <query>
+
+# Install a skill
+hermes skills install <skill-name>
+
+# List installed skills
+hermes skills list
+
+# Check for updates
+hermes skills check
+hermes skills update
+```
+
+**Skills Config:** `~/.hermes/config.yaml` + `~/.hermes/skills/` directory
+
+**Bundled Skills:** 58 skills included (apple-notes, claude-code, computer-use, obsidian, etc.)
+
+**MCP Servers:**
+```bash
+# Add an MCP server
+hermes mcp add <name> --url <endpoint>
+hermes mcp add <name> --command <cmd> --args <args...>
+
+# List MCP servers
+hermes mcp list
+
+# Test connection
+hermes mcp test <name>
+
+# Install from catalog
+hermes mcp install <catalog-name>
+```
+
+**MCP Config Location:** `~/.hermes/config.yaml` under MCP servers section
+
+**Restart Required:** Unknown (not tested due to time constraints). Hermes runs as a long-lived process (gateway mode) which may require reload/restart for config changes. CLI mode likely picks up changes immediately.
+
+---
+
+## Capability Loop (NOT TESTED - Task 2 scope only)
+
+Hermes was not selected for the Task 3 capability loop PoC. ZeptoClaw was chosen due to its simpler architecture and verified hot-reload behavior. Hermes interface has been documented for future adapter implementation.
+
+---
+
+**Verified By:** AgentOne v2 Phase 0 Tasks 2-3 Spike  
+**Next Steps:** Proceed to Phase 1 - Adapter Implementation

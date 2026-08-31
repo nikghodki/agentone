@@ -197,5 +197,162 @@ For desktop app integration, OpenClaw will require:
 
 ---
 
-**Verified By:** AgentOne v2 Phase 0 Task 1 Spike  
-**Next Steps:** Proceed to Phase 0 Task 2 - Hello World Invocations
+## Interface (PARTIAL - Task 2)
+
+### 1. Invoke + Stream
+
+**Interactive Mode:**
+```bash
+cd /Users/nikhil/workspace/flashlearn/spikes/openclaw-test
+export NVM_DIR="$(pwd)/.nvm"
+source "$NVM_DIR/nvm.sh"
+nvm use 22
+openclaw chat
+# OR
+openclaw setup  # Chat + onboard if needed
+```
+
+**Agent Command:**
+```bash
+openclaw agent --local <prompt>
+# For gateway-backed invocation:
+openclaw agent <prompt>
+```
+
+**Streaming:** OpenClaw streams via stdout in interactive mode. Gateway mode uses WebSocket streaming.
+
+**Note:** Full invocation testing was limited due to config migration issues encountered during Task 2.
+
+### 2. Model Wiring (Ollama)
+
+**Config File:** `~/.openclaw/openclaw.json`
+
+**Model Configuration Structure:**
+```json
+{
+  "agents": {
+    "defaults": {
+      "models": {
+        "provider/model-id": {
+          "alias": "Display Name"
+        }
+      },
+      "model": {
+        "primary": "provider/model-id"
+      },
+      "modelPolicy": {
+        "allow": [
+          "provider/model-id"
+        ]
+      }
+    }
+  },
+  "auth": {
+    "profiles": {
+      "provider:default": {
+        "provider": "provider-name",
+        "mode": "api_key"
+      }
+    }
+  }
+}
+```
+
+**Ollama Configuration:** Not fully tested due to config migration complexities. Expected format:
+```json
+{
+  "agents": {
+    "defaults": {
+      "models": {
+        "ollama/llama3.2:3b": {}
+      },
+      "model": {
+        "primary": "ollama/llama3.2:3b"
+      }
+    }
+  },
+  "auth": {
+    "profiles": {
+      "ollama:default": {
+        "provider": "ollama",
+        "mode": "api_key",
+        "base_url": "http://localhost:11434/v1"
+      }
+    }
+  }
+}
+```
+
+**Model Management Commands:**
+```bash
+openclaw models list         # List configured models
+openclaw models set <model>  # Set default model
+openclaw models auth add     # Interactive auth setup
+openclaw models status       # Show model configuration state
+```
+
+**Blocker:** OpenClaw 2026.8.1 required config migration from older version (2026.4.2), which was partially resolved with `openclaw doctor --fix` but full Ollama wiring was not completed due to time constraints.
+
+### 3. Capability Commands
+
+**Skills:**
+```bash
+# Install skill from ClawHub/GitHub/local
+openclaw skills install <name>
+openclaw skills install --github <owner/repo>
+
+# List skills
+openclaw skills list
+
+# Search ClawHub
+openclaw skills search <query>
+
+# Skill info
+openclaw skills info <name>
+
+# Check skill status
+openclaw skills check
+```
+
+**Skills Config Location:** `~/.openclaw/openclaw.json` under `skills.entries` and `~/.openclaw/skills/` directory
+
+**MCP Servers:**
+```bash
+# Add MCP server
+openclaw mcp add <name> --url <endpoint>
+openclaw mcp add <name> --command <cmd> --args <arg>...
+
+# List MCP servers
+openclaw mcp list
+
+# Test connection
+openclaw mcp probe <name>
+
+# Reload MCP servers
+openclaw mcp reload
+
+# Show MCP configuration
+openclaw mcp show
+openclaw mcp show <name>
+```
+
+**MCP Config Location:** Managed via `openclaw mcp add/set/unset` commands (exact JSON location not verified)
+
+**Restart Required:** Unknown — OpenClaw runs a Gateway daemon which may require reload (`openclaw mcp reload` exists, suggesting hot-reload is supported).
+
+---
+
+## Capability Loop (NOT TESTED - Task 2 scope only)
+
+OpenClaw was not selected for the Task 3 capability loop PoC due to:
+1. Config migration complexities encountered during Task 2
+2. Requirement for Node 22+ isolated environment
+3. ZeptoClaw's simpler architecture made it a better candidate for the PoC
+
+OpenClaw interface has been partially documented for future adapter implementation. Full verification of Ollama wiring and capability loop should be completed in Phase 1.
+
+---
+
+**Verified By:** AgentOne v2 Phase 0 Tasks 2-3 Spike (partial)  
+**Status:** Interface partially documented, Ollama wiring BLOCKED by config migration  
+**Next Steps:** Resolve OpenClaw config migration in Phase 1 before implementing adapter
