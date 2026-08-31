@@ -10,7 +10,7 @@ export class OllamaManager {
   constructor(ollamaBinaryPath: string, modelsDir: string, port?: number) {
     this.ollamaBinaryPath = ollamaBinaryPath;
     this.modelsDir = modelsDir;
-    this.port = port || (11500 + Math.floor(Math.random() * 1000));
+    this.port = port !== undefined ? port : (11500 + Math.floor(Math.random() * 1001));
   }
 
   getPort(): number {
@@ -56,11 +56,15 @@ export class OllamaManager {
   }
 
   async isReady(): Promise<boolean> {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 2000);
     try {
-      const response = await fetch(`${this.getBaseUrl()}/api/tags`);
+      const response = await fetch(`${this.getBaseUrl()}/api/tags`, { signal: ctrl.signal });
       return response.ok;
     } catch {
       return false;
+    } finally {
+      clearTimeout(t);
     }
   }
 
@@ -80,13 +84,16 @@ export class OllamaManager {
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    let buffer = "";
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
-      const lines = decoder.decode(value, { stream: true }).split("\n").filter(Boolean);
-      for (const line of lines) {
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines.filter(Boolean)) {
         try {
           const data = JSON.parse(line);
           if (data.total && data.completed) {
@@ -98,6 +105,20 @@ export class OllamaManager {
         } catch {
           // skip malformed JSON lines
         }
+      }
+    }
+
+    if (buffer.trim()) {
+      try {
+        const data = JSON.parse(buffer);
+        if (data.total && data.completed) {
+          onProgress(Math.round((data.completed / data.total) * 100));
+        }
+        if (data.status === "success") {
+          onProgress(100);
+        }
+      } catch {
+        // skip
       }
     }
   }
@@ -128,13 +149,16 @@ export class OllamaManager {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let fullResponse = "";
+    let buffer = "";
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
-      const lines = decoder.decode(value, { stream: true }).split("\n").filter(Boolean);
-      for (const line of lines) {
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines.filter(Boolean)) {
         try {
           const data = JSON.parse(line);
           if (data.message?.content) {
@@ -145,6 +169,19 @@ export class OllamaManager {
         } catch {
           // skip
         }
+      }
+    }
+
+    if (buffer.trim()) {
+      try {
+        const data = JSON.parse(buffer);
+        if (data.message?.content) {
+          const token = data.message.content;
+          fullResponse += token;
+          onToken(token);
+        }
+      } catch {
+        // skip
       }
     }
 

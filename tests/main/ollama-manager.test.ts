@@ -8,7 +8,7 @@ describe("OllamaManager", () => {
   let manager: OllamaManager;
 
   beforeEach(() => {
-    manager = new OllamaManager("/fake/ollama", "/fake/models", 0);
+    manager = new OllamaManager("/fake/ollama", "/fake/models");
   });
 
   it("generates a random port between 11500-12500", () => {
