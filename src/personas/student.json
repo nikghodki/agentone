@@ -1,0 +1,82 @@
+{
+  "id": "student",
+  "name": "Student",
+  "icon": "graduation-cap",
+  "system_prompt": "You are a helpful AI study assistant. Explain concepts clearly with analogies. Be encouraging. Use simple language but don't be condescending. When generating study materials, be thorough and accurate.",
+  "tasks": [
+    {
+      "id": "summarize_notes",
+      "title": "Summarize my notes",
+      "subtitle": "Turn long notes into key bullet points",
+      "icon": "file-text",
+      "category": "study",
+      "guided_flow": {
+        "fields": [
+          { "type": "textarea", "label": "Paste your notes or text", "placeholder": "Paste lecture notes, textbook excerpts, or any study material..." },
+          { "type": "choice", "label": "Summary style", "options": ["Bullet points", "Short paragraph", "Cornell notes format", "Mind map outline"] }
+        ],
+        "prompt_template": "Summarize the following notes in {{summary_style}} format. Be thorough but concise. Highlight the most important concepts.\n\nNotes:\n{{paste_your_notes_or_text}}"
+      }
+    },
+    {
+      "id": "explain_concept",
+      "title": "Explain this concept",
+      "subtitle": "Get a simple, clear explanation",
+      "icon": "lightbulb",
+      "category": "study",
+      "guided_flow": {
+        "fields": [
+          { "type": "textarea", "label": "What concept do you need explained?", "placeholder": "e.g., 'photosynthesis', 'supply and demand', 'recursion'..." },
+          { "type": "choice", "label": "Explanation level", "options": ["Explain like I'm 5", "High school level", "College intro level", "Advanced/technical"] }
+        ],
+        "prompt_template": "Explain the following concept at a {{explanation_level}} level. Use a clear analogy and give one concrete example.\n\nConcept: {{what_concept_do_you_need_explained}}"
+      }
+    },
+    {
+      "id": "quiz_me",
+      "title": "Quiz me",
+      "subtitle": "Test your knowledge with AI-generated questions",
+      "icon": "help-circle",
+      "category": "study",
+      "guided_flow": {
+        "fields": [
+          { "type": "textarea", "label": "Paste the material to be quizzed on", "placeholder": "Paste notes, a chapter summary, or describe the topic..." },
+          { "type": "choice", "label": "Question type", "options": ["Multiple choice (4 options)", "Short answer", "True/False", "Mix of all types"] },
+          { "type": "choice", "label": "Difficulty", "options": ["Easy", "Medium", "Hard", "Exam-level"] }
+        ],
+        "prompt_template": "Generate 10 {{question_type}} questions at {{difficulty}} difficulty based on the following material. For multiple choice, include the correct answer marked. For all types, provide an answer key at the end.\n\nMaterial:\n{{paste_the_material_to_be_quizzed_on}}"
+      }
+    },
+    {
+      "id": "essay_help",
+      "title": "Help me write this essay",
+      "subtitle": "Get an outline and first draft",
+      "icon": "pen-tool",
+      "category": "writing",
+      "guided_flow": {
+        "fields": [
+          { "type": "text", "label": "Essay topic", "placeholder": "e.g., 'The impact of social media on democracy'" },
+          { "type": "textarea", "label": "Thesis statement or main argument", "optional": true, "placeholder": "What's your main point? Leave blank for suggestions." },
+          { "type": "choice", "label": "Essay type", "options": ["Argumentative", "Expository", "Narrative", "Compare and contrast", "Research paper"] },
+          { "type": "choice", "label": "Length", "options": ["Short (500 words)", "Medium (1000 words)", "Long (2000+ words)"] }
+        ],
+        "prompt_template": "Help me write a {{essay_type}} essay about: {{essay_topic}}\nTarget length: {{length}}\n{{#if thesis_statement_or_main_argument}}My thesis: {{thesis_statement_or_main_argument}}{{/if}}\n\nFirst, provide a detailed outline with section headers. Then write a complete first draft following that outline."
+      }
+    },
+    {
+      "id": "proofread",
+      "title": "Proofread my writing",
+      "subtitle": "Grammar, clarity, and style suggestions",
+      "icon": "check-circle",
+      "category": "writing",
+      "guided_flow": {
+        "fields": [
+          { "type": "textarea", "label": "Paste your writing", "placeholder": "Paste your essay, email, or any text you want reviewed..." },
+          { "type": "choice", "label": "Focus on", "options": ["Grammar and spelling only", "Clarity and flow", "Academic tone", "Everything (comprehensive review)"] }
+        ],
+        "prompt_template": "Proofread the following text with a focus on {{focus_on}}. For each issue found:\n1. Quote the original text\n2. Explain what's wrong\n3. Suggest the correction\n\nAt the end, provide the fully corrected version.\n\nText to proofread:\n{{paste_your_writing}}"
+      }
+    }
+  ],
+  "discovery_queue": ["translate_text", "create_flashcards", "research_topic", "cite_sources", "study_schedule"]
+}

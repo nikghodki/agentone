@@ -1,0 +1,82 @@
+{
+  "id": "professional",
+  "name": "Working Professional",
+  "icon": "briefcase",
+  "system_prompt": "You are a helpful AI assistant for a working professional. Be concise, practical, and business-appropriate. Focus on saving time and improving quality of work output. Default to a professional tone unless told otherwise.",
+  "tasks": [
+    {
+      "id": "draft_email",
+      "title": "Draft an email",
+      "subtitle": "Reply to a tricky message or write fresh",
+      "icon": "mail",
+      "category": "communication",
+      "guided_flow": {
+        "fields": [
+          { "type": "choice", "label": "What kind of email?", "options": ["Reply to someone", "Cold outreach", "Follow-up", "Thank you note", "Apology", "Request"] },
+          { "type": "textarea", "label": "Paste the email you're replying to", "optional": true, "placeholder": "If replying, paste the original email here..." },
+          { "type": "choice", "label": "Tone", "options": ["Professional", "Friendly", "Firm", "Casual"] },
+          { "type": "textarea", "label": "Key points to include", "placeholder": "What do you want to say? List the main points..." }
+        ],
+        "prompt_template": "Write a {{tone}} {{what_kind_of_email}} email.{{#if paste_the_email_youre_replying_to}} The email I'm replying to:\n{{paste_the_email_youre_replying_to}}{{/if}}\n\nKey points to cover:\n{{key_points_to_include}}"
+      }
+    },
+    {
+      "id": "summarize_document",
+      "title": "Summarize a document",
+      "subtitle": "Get key takeaways quickly",
+      "icon": "file-text",
+      "category": "productivity",
+      "guided_flow": {
+        "fields": [
+          { "type": "textarea", "label": "Paste the document text", "placeholder": "Paste the document, article, or report you want summarized..." },
+          { "type": "choice", "label": "Summary format", "options": ["Executive summary (3-5 sentences)", "Bullet points", "Key takeaways + action items", "One paragraph"] }
+        ],
+        "prompt_template": "Summarize the following document in {{summary_format}} format. Focus on the most important information and any action items.\n\nDocument:\n{{paste_the_document_text}}"
+      }
+    },
+    {
+      "id": "brainstorm",
+      "title": "Brainstorm ideas",
+      "subtitle": "Generate and rank ideas for any topic",
+      "icon": "zap",
+      "category": "creativity",
+      "guided_flow": {
+        "fields": [
+          { "type": "textarea", "label": "What do you need ideas for?", "placeholder": "e.g., 'Marketing campaign for our new product launch'" },
+          { "type": "textarea", "label": "Constraints or requirements", "optional": true, "placeholder": "e.g., 'Budget under $5K, target audience is Gen Z'" }
+        ],
+        "prompt_template": "Brainstorm 10 creative ideas for: {{what_do_you_need_ideas_for}}\n{{#if constraints_or_requirements}}Constraints: {{constraints_or_requirements}}{{/if}}\n\nFor each idea, give:\n1. The idea (one sentence)\n2. Why it could work\n3. Effort level (Low/Medium/High)\n\nRank them from most to least promising."
+      }
+    },
+    {
+      "id": "meeting_prep",
+      "title": "Prepare for a meeting",
+      "subtitle": "Get talking points and questions",
+      "icon": "calendar",
+      "category": "productivity",
+      "guided_flow": {
+        "fields": [
+          { "type": "textarea", "label": "Meeting agenda or topic", "placeholder": "What's the meeting about? Paste an agenda if you have one..." },
+          { "type": "choice", "label": "Your role", "options": ["Leading the meeting", "Presenting", "Participating", "Just listening/learning"] },
+          { "type": "textarea", "label": "What do you want to accomplish?", "optional": true, "placeholder": "Your goals for this meeting..." }
+        ],
+        "prompt_template": "Help me prepare for a meeting where I'm {{your_role}}.\n\nMeeting topic/agenda:\n{{meeting_agenda_or_topic}}\n{{#if what_do_you_want_to_accomplish}}My goals: {{what_do_you_want_to_accomplish}}{{/if}}\n\nProvide:\n1. 5 key talking points\n2. 3 smart questions to ask\n3. Potential objections and how to handle them\n4. A brief opening statement"
+      }
+    },
+    {
+      "id": "linkedin_post",
+      "title": "Write a LinkedIn post",
+      "subtitle": "Professional content with engagement",
+      "icon": "share-2",
+      "category": "communication",
+      "guided_flow": {
+        "fields": [
+          { "type": "textarea", "label": "What do you want to post about?", "placeholder": "e.g., 'A lesson I learned about leadership this week'" },
+          { "type": "choice", "label": "Post style", "options": ["Story/personal experience", "Hot take/opinion", "Tips and advice", "Industry insight", "Career update"] }
+        ],
+        "prompt_template": "Write a LinkedIn post in {{post_style}} style about: {{what_do_you_want_to_post_about}}\n\nMake it:\n- Hook the reader in the first line\n- Use short paragraphs (1-2 sentences each)\n- Include a call-to-action at the end\n- Professional but personable tone\n- Under 200 words"
+      }
+    }
+  ],
+  "discovery_queue": ["presentation_outline", "performance_review", "project_plan", "salary_negotiation", "resignation_letter"]
+}
