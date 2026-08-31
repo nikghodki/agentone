@@ -1,6 +1,7 @@
 import { useAppStore } from "./store";
 import { SetupPage } from "./pages/SetupPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
+import { DashboardPage } from "./pages/DashboardPage";
 
 function Placeholder({ name }: { name: string }) {
   return (
@@ -20,7 +21,7 @@ export function App() {
     case "onboarding-priorities":
       return <OnboardingPage />;
     case "dashboard":
-      return <Placeholder name="Dashboard" />;
+      return <DashboardPage />;
     case "guided-task":
       return <Placeholder name="Guided Task Flow" />;
     case "chat":
