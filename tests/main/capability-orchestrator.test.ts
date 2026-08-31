@@ -15,6 +15,9 @@ class FakeAdapter implements FrameworkAdapter {
   public statusPollCount: number = 0;
   public maxStatusPolls: number = 0; // For timeout tests
   public capabilityGapOnFirstTask: string | null = null; // Simulate gap on first task
+  public capabilityGaps: string[] = []; // For multi-gap tests
+  public persistentGap: string | null = null; // For persistent-gap test
+  public taskCounter: number = 0; // Track how many times sendTask was called
 
   async install(): Promise<void> {
     this.callLog.push("install");
@@ -47,17 +50,48 @@ class FakeAdapter implements FrameworkAdapter {
 
   async sendTask(input: string): Promise<void> {
     this.callLog.push(`sendTask:${input}`);
+    this.taskCounter++;
   }
 
   streamOutput(cb: (chunk: string) => void): () => void {
     this.callLog.push("streamOutput");
 
-    // Simulate streaming with capability gap on first task
+    // Simulate streaming based on test scenario
     setTimeout(() => {
-      if (this.capabilityGapOnFirstTask) {
-        cb(`I need the ${this.capabilityGapOnFirstTask} capability`);
-        cb(`__CAPABILITY_GAP__:${this.capabilityGapOnFirstTask}`);
+      // Persistent gap test: always emit the same gap
+      if (this.persistentGap) {
+        cb(`I need the ${this.persistentGap} capability`);
+        cb(`__CAPABILITY_GAP__:${this.persistentGap}`);
+        // Never emit DONE, just the gap
+        return;
       }
+
+      // Multi-gap test: emit gaps based on task counter
+      if (this.capabilityGaps.length > 0) {
+        const gapIndex = this.taskCounter - 1;
+        if (gapIndex < this.capabilityGaps.length) {
+          const gap = this.capabilityGaps[gapIndex];
+          cb(`I need the ${gap} capability`);
+          cb(`__CAPABILITY_GAP__:${gap}`);
+          return; // Don't emit DONE yet, need to install and retry
+        } else {
+          // All gaps handled, emit success
+          cb("Task completed successfully with all capabilities");
+          cb("__TASK_DONE__");
+          return;
+        }
+      }
+
+      // Single gap test (legacy)
+      if (this.capabilityGapOnFirstTask) {
+        if (this.taskCounter === 1) {
+          cb(`I need the ${this.capabilityGapOnFirstTask} capability`);
+          cb(`__CAPABILITY_GAP__:${this.capabilityGapOnFirstTask}`);
+          return; // Don't emit DONE yet
+        }
+      }
+
+      // Default: emit success
       cb("Task completed successfully");
       cb("__TASK_DONE__");
     }, 10);
@@ -307,6 +341,87 @@ describe("CapabilityOrchestrator", () => {
 
       // Verify status update was fired before error
       expect(statuses).toContain("Setting up unsupported-mcp...");
+    });
+  });
+
+  describe("runTask() - multi-gap path", () => {
+    it("handles multiple gaps in sequence, installs all, returns full result", async () => {
+      // Simulate task that needs TWO capabilities
+      adapter.capabilityGaps = ["web-search", "mcp:database"];
+      adapter.shouldRequireRestart = false;
+
+      const tokens: string[] = [];
+      const statuses: string[] = [];
+
+      const result = await orchestrator.runTask(
+        "Search web and query database",
+        (token) => tokens.push(token),
+        (status) => statuses.push(status)
+      );
+
+      // Verify task completed with full result
+      expect(result).toContain("Task completed successfully with all capabilities");
+
+      // Verify both capabilities were installed
+      expect(adapter.callLog).toContain("installCapability:web-search");
+      expect(adapter.callLog).toContain("installCapability:database");
+
+      // Verify both were recorded in DB
+      expect(db.recordedCapabilities).toHaveLength(2);
+      expect(db.recordedCapabilities[0]).toEqual({
+        deploymentId: "test-deployment-id",
+        type: "skill",
+        name: "web-search",
+        source: "marketplace",
+      });
+      expect(db.recordedCapabilities[1]).toEqual({
+        deploymentId: "test-deployment-id",
+        type: "mcp",
+        name: "database",
+        source: "marketplace",
+      });
+
+      // Verify both status updates fired
+      expect(statuses).toContain("Setting up web-search...");
+      expect(statuses).toContain("Setting up database...");
+
+      // Verify task was sent 3 times: initial + after gap1 + after gap2
+      const sendTaskCalls = adapter.callLog.filter((c) => c.startsWith("sendTask:"));
+      expect(sendTaskCalls.length).toBe(3);
+    });
+  });
+
+  describe("runTask() - persistent-gap path", () => {
+    it("throws when same gap persists after install (re-install guard)", async () => {
+      // Simulate gap that never goes away (wrong name, config not reloaded, etc.)
+      adapter.persistentGap = "broken-skill";
+      adapter.shouldRequireRestart = false;
+
+      const tokens: string[] = [];
+      const statuses: string[] = [];
+
+      // Expect runTask to reject with re-install guard error
+      await expect(
+        orchestrator.runTask(
+          "Use broken skill",
+          (token) => tokens.push(token),
+          (status) => statuses.push(status)
+        )
+      ).rejects.toThrow(/already installed this run but the gap persists/i);
+
+      // Verify install was attempted once
+      expect(adapter.callLog).toContain("installCapability:broken-skill");
+
+      // Verify it was NOT installed twice (guard worked)
+      const installCalls = adapter.callLog.filter((c) => c === "installCapability:broken-skill");
+      expect(installCalls.length).toBe(1);
+
+      // Verify it was recorded once
+      expect(db.recordedCapabilities).toHaveLength(1);
+
+      // Verify status update fired once
+      const statusCalls = statuses.filter((s) => s.includes("broken-skill"));
+      expect(statusCalls.length).toBe(1);
     });
   });
 });
