@@ -401,7 +401,7 @@ describe("createBackend", () => {
     expect(backend.constructor.name).toBe("OpenAICompatibleBackend");
   });
 
-  it("should resolve API key via Secrets and inject into correct header", async () => {
+  it("should resolve Anthropic API key via Secrets and inject x-api-key header (E2E)", async () => {
     const chunks = [
       'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"text":"OK"}}\n\n',
       'event: message_stop\ndata: {"type":"message_stop"}\n\n',
@@ -424,22 +424,66 @@ describe("createBackend", () => {
       baseUrl: "https://api.anthropic.com",
       protocol: "v1/messages",
       model: "claude-3-sonnet-20240229",
-      secretRef: "anthropic-key",
+      secretRef: "anthropic-key", // mockSecrets.get("anthropic-key") returns "sk-ant-resolved"
     };
 
-    // Import AnthropicMessagesBackend to inject fake fetch
-    const { AnthropicMessagesBackend } = await import("../../src/main/model-backends/anthropic-messages");
-    const originalConstructor = AnthropicMessagesBackend;
-
-    // Temporarily replace the constructor to inject fake fetch
-    const backend = new originalConstructor(config, "sk-ant-resolved", fakeFetch as any);
+    // Real end-to-end test: createBackend resolves key, backend uses it
+    const backend = createBackend(config, mockSecrets, fakeFetch as any);
 
     await backend.chat([{ role: "user", content: "test" }], () => {});
 
     expect(capturedHeaders).toHaveProperty("x-api-key", "sk-ant-resolved");
   });
 
-  it("should handle null secretRef for local backends", async () => {
+  it("should resolve OpenAI API key via Secrets and inject Authorization header (E2E)", async () => {
+    const chunks = [
+      'data: {"choices":[{"delta":{"content":"OK"}}]}\n',
+      'data: [DONE]\n',
+    ];
+
+    let capturedHeaders: any = null;
+    const fakeFetch = async (_url: string, options?: RequestInit): Promise<Response> => {
+      capturedHeaders = options?.headers;
+      return {
+        ok: true,
+        statusText: "OK",
+        body: createSSEStream(chunks),
+      } as Response;
+    };
+
+    const config: ModelBackendConfig = {
+      id: "test-backend",
+      kind: "cloud",
+      provider: "openai",
+      baseUrl: "https://api.openai.com",
+      protocol: "v1/chat/completions",
+      model: "gpt-4",
+      secretRef: "openai-key", // mockSecrets.get("openai-key") returns "sk-openai-resolved"
+    };
+
+    const backend = createBackend(config, mockSecrets, fakeFetch as any);
+
+    await backend.chat([{ role: "user", content: "test" }], () => {});
+
+    expect(capturedHeaders).toHaveProperty("Authorization", "Bearer sk-openai-resolved");
+  });
+
+  it("should send NO auth headers when secretRef is null (local backends)", async () => {
+    const chunks = [
+      'data: {"choices":[{"delta":{"content":"OK"}}]}\n',
+      'data: [DONE]\n',
+    ];
+
+    let capturedHeaders: any = null;
+    const fakeFetch = async (_url: string, options?: RequestInit): Promise<Response> => {
+      capturedHeaders = options?.headers;
+      return {
+        ok: true,
+        statusText: "OK",
+        body: createSSEStream(chunks),
+      } as Response;
+    };
+
     const config: ModelBackendConfig = {
       id: "test-backend",
       kind: "ollama",
@@ -450,10 +494,11 @@ describe("createBackend", () => {
       secretRef: null,
     };
 
-    const mockFetch = async () => ({ ok: true, body: null } as any);
-    const backend = createBackend(config, mockSecrets, mockFetch as any);
+    const backend = createBackend(config, mockSecrets, fakeFetch as any);
 
-    expect(backend).toBeDefined();
-    expect(backend.constructor.name).toBe("OpenAICompatibleBackend");
+    await backend.chat([{ role: "user", content: "test" }], () => {});
+
+    expect(capturedHeaders).not.toHaveProperty("Authorization");
+    expect(capturedHeaders).not.toHaveProperty("x-api-key");
   });
 });

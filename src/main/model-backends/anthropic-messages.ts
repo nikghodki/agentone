@@ -1,6 +1,37 @@
 import type { ModelBackend, ChatMessage, ModelBackendConfig } from "../../shared/v2-types";
 
 /**
+ * Process a single SSE line and extract text delta if present.
+ * @returns Object with updated currentEvent and text delta (if any)
+ */
+function processLine(line: string, currentEvent: string): { currentEvent: string; text: string | null } {
+  if (!line.trim()) {
+    return { currentEvent, text: null };
+  }
+
+  // SSE format: "event: <type>" or "data: {json}"
+  if (line.startsWith("event: ")) {
+    return { currentEvent: line.slice(7), text: null };
+  } else if (line.startsWith("data: ")) {
+    const dataContent = line.slice(6);
+
+    // Only process content_block_delta events
+    if (currentEvent === "content_block_delta") {
+      try {
+        const data = JSON.parse(dataContent);
+        const text = data.delta?.text;
+        return { currentEvent, text: text || null };
+      } catch {
+        // Skip malformed JSON lines
+        return { currentEvent, text: null };
+      }
+    }
+  }
+
+  return { currentEvent, text: null };
+}
+
+/**
  * Anthropic Messages API backend for /v1/messages streaming.
  *
  * SSE format:
@@ -63,28 +94,12 @@ export class AnthropicMessagesBackend implements ModelBackend {
 
       // Process complete lines
       for (const line of lines) {
-        if (!line.trim()) continue;
+        const result = processLine(line, currentEvent);
+        currentEvent = result.currentEvent;
 
-        // SSE format: "event: <type>" or "data: {json}"
-        if (line.startsWith("event: ")) {
-          currentEvent = line.slice(7); // Remove "event: " prefix
-        } else if (line.startsWith("data: ")) {
-          const dataContent = line.slice(6); // Remove "data: " prefix
-
-          // Only process content_block_delta events
-          if (currentEvent === "content_block_delta") {
-            try {
-              const data = JSON.parse(dataContent);
-              const text = data.delta?.text;
-
-              if (text) {
-                fullResponse += text;
-                onToken(text);
-              }
-            } catch {
-              // Skip malformed JSON lines
-            }
-          }
+        if (result.text) {
+          fullResponse += result.text;
+          onToken(result.text);
         }
       }
     }
@@ -93,26 +108,12 @@ export class AnthropicMessagesBackend implements ModelBackend {
     if (buffer.trim()) {
       const lines = buffer.split("\n");
       for (const line of lines) {
-        if (!line.trim()) continue;
+        const result = processLine(line, currentEvent);
+        currentEvent = result.currentEvent;
 
-        if (line.startsWith("event: ")) {
-          currentEvent = line.slice(7);
-        } else if (line.startsWith("data: ")) {
-          const dataContent = line.slice(6);
-
-          if (currentEvent === "content_block_delta") {
-            try {
-              const data = JSON.parse(dataContent);
-              const text = data.delta?.text;
-
-              if (text) {
-                fullResponse += text;
-                onToken(text);
-              }
-            } catch {
-              // Skip malformed JSON
-            }
-          }
+        if (result.text) {
+          fullResponse += result.text;
+          onToken(result.text);
         }
       }
     }
