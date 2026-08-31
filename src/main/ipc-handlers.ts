@@ -83,9 +83,10 @@ export function registerIpcHandlers(db: Database, rateLimiter: RateLimiter) {
 
     rateLimiter.recordGeneration(db);
 
-    const msgId = randomUUID();
-    db.saveMessage({ id: randomUUID(), conversationId, role: "user", content: prompt });
-    db.saveMessage({ id: msgId, conversationId, role: "assistant", content: fullResponse });
+    const userMsgId = randomUUID();
+    const assistantMsgId = randomUUID();
+    db.saveMessage({ id: userMsgId, conversationId, role: "user", content: prompt });
+    db.saveMessage({ id: assistantMsgId, conversationId, role: "assistant", content: fullResponse });
 
     return fullResponse;
   });
@@ -99,11 +100,14 @@ export function registerIpcHandlers(db: Database, rateLimiter: RateLimiter) {
 
   ipcMain.handle("activate-license", (_e, key: string) => {
     const profile = db.getProfile();
-    if (profile) {
-      db.saveProfile({ ...profile, licenseKey: key, licenseValidUntil: null });
-    }
+    if (!profile) throw new Error("Profile not initialized. Cannot activate license.");
+    db.saveProfile({ ...profile, licenseKey: key, licenseValidUntil: null });
     return true;
   });
+}
+
+export function shutdownServices() {
+  ollamaManager?.stop();
 }
 
 function getLicenseStatus(db: Database): "free" | "pro" | "expired" {

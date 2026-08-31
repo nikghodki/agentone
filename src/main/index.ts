@@ -3,10 +3,11 @@ import path from "path";
 import fs from "fs";
 import { Database } from "./database";
 import { RateLimiter } from "./rate-limiter";
-import { registerIpcHandlers } from "./ipc-handlers";
+import { registerIpcHandlers, shutdownServices } from "./ipc-handlers";
 import { getAppPaths } from "./paths";
 
 let mainWindow: BrowserWindow | null = null;
+let db: Database | null = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -33,8 +34,13 @@ app.whenReady().then(() => {
   const paths = getAppPaths();
   fs.mkdirSync(paths.models, { recursive: true });
 
-  const db = new Database(paths.database);
+  db = new Database(paths.database);
   db.initialize();
+
+  app.on("will-quit", () => {
+    shutdownServices();
+    db?.close();
+  });
 
   const rateLimiter = new RateLimiter(20);
   registerIpcHandlers(db, rateLimiter);
