@@ -1,10 +1,12 @@
 /**
  * Framework Registry — Metadata for the 3 supported AI agent frameworks.
  *
- * IMPORTANT: Framework features are sourced from unverified research documents
- * (docs/research/openclaw.md, docs/research/zeptoclaw.md, docs/research/hermes-agent.md).
- * These should be reconciled with verified data from the Phase 0 verification spike
- * before shipping to production.
+ * Features are sourced from Phase 0 verified installation and interface docs:
+ * - docs/research/verified/openclaw.md
+ * - docs/research/verified/zeptoclaw.md
+ * - docs/research/verified/hermes-agent.md
+ *
+ * NOTE: OpenClaw's Ollama wiring is PARTIAL/needs work per the Phase 0 spike.
  */
 
 import type { Database } from "./database";
@@ -19,11 +21,11 @@ export const FRAMEWORKS: FrameworkMeta[] = [
     id: "openclaw",
     name: "OpenClaw",
     features: [
-      "Multi-channel messaging — WhatsApp, Telegram, Slack, Discord, Signal, iMessage, and more",
-      "Local & hosted models — Supports cloud providers (Anthropic, OpenAI) and local models (Ollama, LM Studio)",
-      "Extensible capabilities — Add tools, skills, and plugins from ClawHub marketplace",
-      "MCP protocol support — Full Model Context Protocol client/server for tool integration",
-      "Web Control UI & CLI — Dashboard at localhost:18789 plus rich CLI and TUI interfaces",
+      "Multi-channel messaging gateway (WhatsApp, Telegram, Slack, Discord, Signal)",
+      "Cloud model providers (Anthropic, OpenAI) with OpenAI-compatible streaming",
+      "MCP protocol native support (server and client commands)",
+      "Extensible via ClawHub skills, plugins, and tools",
+      "Rich CLI with 60+ commands and WebSocket Gateway architecture",
     ],
     installRecipe: {},
     isDefault: true,
@@ -32,11 +34,11 @@ export const FRAMEWORKS: FrameworkMeta[] = [
     id: "zeptoclaw",
     name: "ZeptoClaw",
     features: [
-      "Multi-Provider LLM Support — 18 providers with SSE streaming, retry/backoff, and auto-failover",
-      "33 Built-in Tools + Extensibility — Shell, filesystem, web search, git, PDF reading, plus plugins and MCP",
-      "Multi-Channel Gateway — Unified message bus for Telegram, Slack, Discord, WhatsApp, email, webhook",
-      "6-Layer Security Model — Container sandboxes, prompt injection detection, secret leak scanner, policy engine",
-      "Agent Swarms & Delegation — Parallel sub-agent delegation with cost-aware routing and aggregation",
+      "Lightweight Rust binary (6MB, no runtime dependencies)",
+      "Local model support via Ollama (tested with llama3.2:3b)",
+      "Hot-reload capabilities (skills available immediately, no restart)",
+      "Multi-channel gateway (Telegram, Slack, Discord, WhatsApp, email)",
+      "MCP servers and extensible skills system",
     ],
     installRecipe: {},
   },
@@ -44,11 +46,11 @@ export const FRAMEWORKS: FrameworkMeta[] = [
     id: "hermes",
     name: "Hermes Agent",
     features: [
-      "Multi-Platform Gateway — Single agent accessible from Telegram, Discord, Slack, WhatsApp, Signal, CLI",
-      "Autonomous Skill Creation — Built-in learning loop that creates skills from tasks and self-improves",
-      "Persistent Memory & Search — Agent-curated memory with FTS5 full-text session search and cross-session recall",
-      "Flexible Terminal Backends — Seven execution environments including Docker, SSH, Modal, Daytona, Vercel",
-      "Scheduled Automation — Built-in cron scheduler with natural language task definitions",
+      "Self-contained install with bundled Python 3.11 and Node 26 runtimes",
+      "58 bundled skills plus skill marketplace and MCP server support",
+      "Multi-channel gateway (Telegram, Slack, Discord, WhatsApp, Signal)",
+      "Local Ollama support verified (tested with llama3.2:3b)",
+      "Rich CLI with 60+ commands including one-shot mode and TUI",
     ],
     installRecipe: {},
   },

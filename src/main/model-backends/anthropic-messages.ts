@@ -70,7 +70,7 @@ export class AnthropicMessagesBackend implements ModelBackend {
     });
 
     if (!response.ok || !response.body) {
-      throw new Error(`Chat request failed: ${response.statusText}`);
+      throw new Error(`Chat request failed: ${response.status} ${response.statusText}`);
     }
 
     const reader = response.body.getReader();
@@ -81,7 +81,11 @@ export class AnthropicMessagesBackend implements ModelBackend {
 
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        // Flush any remaining multibyte characters
+        buffer += decoder.decode();
+        break;
+      }
 
       // Append new chunk to buffer
       buffer += decoder.decode(value, { stream: true });

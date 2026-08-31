@@ -93,7 +93,8 @@ export class Database {
         deployment_id TEXT NOT NULL REFERENCES deployments(id),
         type TEXT NOT NULL CHECK(type IN ('mcp', 'plugin', 'skill')),
         name TEXT NOT NULL,
-        source TEXT NOT NULL
+        source TEXT NOT NULL,
+        installed_at TEXT DEFAULT (datetime('now'))
       );
 
       CREATE INDEX IF NOT EXISTS idx_capabilities_deployment_id ON capabilities(deployment_id);

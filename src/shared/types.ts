@@ -1,3 +1,5 @@
+import type { FrameworkMeta } from "./v2-types";
+
 export interface AppPaths {
   userData: string;
   models: string;
@@ -86,8 +88,6 @@ export interface GenerationResult {
   conversationId: string;
   messageId: string;
 }
-
-import type { FrameworkMeta } from "./v2-types";
 
 export interface ElectronAPI {
   getAppPaths: () => Promise<AppPaths>;
