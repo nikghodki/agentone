@@ -107,10 +107,12 @@ Renderer (React)
 1. User asks → app forwards to the framework; framework runs, using its **web_search** to identify a capability it lacks.
 2. App detects the gap (from the framework's output/tool signal — exact signal per framework confirmed in the spike) and resolves the concrete capability (MCP server / plugin / skill).
 3. **App installs + configures** it via the framework's config file / install CLI (`openclaw mcp add`, zeptoclaw `install_skill`, hermes `config.yaml` edit).
-4. App performs a **transparent restart/resume** of the framework (capabilities load at startup), preserving conversation/task context.
+4. App reloads capabilities **only if the framework requires it** — the Phase 0 spike found **zeptoclaw hot-reloads skills with NO restart** (loop = detect → install → resume). Some frameworks may still need a restart; the adapter declares whether a restart is required.
 5. Framework continues; app streams the result. User sees only "Setting up <capability>…".
 
-**Restart/resume** is a first-class concern: the orchestrator must checkpoint task context, restart the adapter, and re-issue the task so the newly loaded capability is available.
+**Restart/resume is per-framework, not universal** (spike-corrected): the orchestrator asks the adapter whether a restart is needed; when it isn't (zeptoclaw), it just resumes.
+
+**When a restart IS required, the app owns it — trigger + monitor:** the app does NOT ask the user to restart and does NOT assume the gateway came back. It (1) checkpoints task/conversation context, (2) **triggers the restart** via the adapter (`stop` → `start`), (3) **monitors readiness** by polling the adapter's `status()`/health endpoint until the gateway reports healthy, with a bounded timeout, (4) on healthy → re-issues the task and resumes streaming; on timeout/crash-loop → surfaces a clear error and does not silently hang. The `FrameworkAdapter` exposes `restart()` and a `status()`/health check for exactly this; the orchestrator treats a required restart as a first-class, monitored step.
 
 ---
 
@@ -158,19 +160,20 @@ v1 `conversations`/`messages` tables are reused for the task/chat surface.
 
 ---
 
-## 10. Risks & Spikes (do these FIRST in the plan)
-1. **Interface verification spike (per framework, BLOCKING):** confirm the real install command, invoke+stream mechanism, config schema, MCP/plugin/skill install command, capability-gap signal, and restart behavior. The research is plausible but cited implausible repo stats — verify before coding adapters.
-2. **Restart/resume UX:** capabilities load at startup; the resume loop must preserve context. Prototype early.
-3. **Gap-signal detection:** none of the three documents a clean "missing capability" event. May require parsing agent output or wrapping the web_search/tool layer. High-uncertainty — spike it.
-4. **Cross-platform install:** three different runtimes (Node/Rust/Python) to install reliably on Mac + Windows. Managed installs are non-trivial.
-5. **Model-backend wiring:** each framework expresses providers differently in its config; the ModelBackend→framework-config mapping needs a small adapter per framework.
+## 10. Risks & Spikes — Phase 0 spike COMPLETE (findings in `docs/research/verified/`)
+1. **Interface verification (DONE):** all three installed + verified against local Ollama. zeptoclaw + hermes invoke/stream/config/capability commands VERIFIED; **openclaw's Ollama wiring is PARTIAL** (config-migration complexity) and needs dedicated work in its adapter.
+2. **Restart/resume (RESOLVED, simpler than feared):** zeptoclaw hot-reloads skills — **no restart**. Restart is per-framework, declared by the adapter (see §6).
+3. **Gap-signal detection (PARTIAL):** app-orchestrated loop proven GO on zeptoclaw; the exact gap signal per framework still needs hardening in each adapter.
+4. **Cross-platform install + sandboxing (ELEVATED):** the **hermes installer hijacks the host `node` PATH** (spike finding). The app MUST sandbox framework installs (isolated PATH/prefix or container) so a framework installer cannot hijack host runtimes; openclaw needs a bundled/isolated Node 22.
+5. **Model-backend wiring:** each framework expresses providers differently in its config; the ModelBackend→framework-config mapping needs a small adapter per framework (openclaw hardest — see #1).
 
 ---
 
 ## 11. Phasing (thin slice → fast-follows)
-- **Phase 0 (spike):** verify all three frameworks' interfaces; confirm the capability gap→install→restart→resume loop is feasible on openclaw. Output: a short findings doc + a go/no-go per assumption.
-- **Phase 1 (thin slice):** openclaw, **local**, with the **Ollama** backend — deploy → run one task → pre-bundled capability works → one runtime capability install+restart+resume works end-to-end.
-- **Phase 2:** add zeptoclaw + hermes adapters (local); framework selection with top-5 features.
+- **Phase 0 (spike): DONE** — all three frameworks + Ollama installed/verified; capability loop GO (proven on zeptoclaw, no restart). Findings in `docs/research/verified/`.
+- **Phase 1 (foundations): DONE** — v2 types + schema, secrets, ModelBackend layer (both protocols) + factory, framework registry, onboarding wizard. (Merged.)
+- **Phase 2 (adapters — NEXT): zeptoclaw FIRST** as the proven reference adapter (install/configure/start/sendTask/streamOutput/installCapability, sandboxed install) + the capability orchestrator + a real end-to-end run with Ollama; then hermes; then **openclaw last** (hardest to wire — its config-migration must be solved before it can serve as the default). Framework install must be **sandboxed** (spike finding).
+- **Phase 3:** model backends — advanced-local (llama.cpp/vLLM), custom endpoint (both protocols), cloud providers + API-key entry (`secrets.set`).
 - **Phase 3:** model backends — advanced-local (llama.cpp/vLLM), custom endpoint (both protocols), cloud providers.
 - **Phase 4:** remote deployments; capability management UI; polish.
 
@@ -182,3 +185,8 @@ v1 `conversations`/`messages` tables are reused for the task/chat surface.
 3. **Pre-bundle set (minimal start):** web search + fetch + filesystem MCP/tools per framework.
 4. **Mac-first**: ship macOS first; Windows support for the Rust (zeptoclaw) / Python (hermes) managed installs is a later addition.
 5. **First implementation plan covers Phase 0 (spike) + Phase 1 (thin slice)**; Phases 2–4 get their own plans.
+
+### Post-spike decisions (amended 2026-08-31, after Phase 0)
+6. **Default framework stays openclaw** (per original product intent), BUT it is built **last** among adapters (spike showed it's hardest to wire), and **"openclaw adapter works end-to-end" is a release gate** — the shipped default must actually function before any release. Build order: **zeptoclaw → hermes → openclaw**.
+7. **Capability loop needs no universal restart** — zeptoclaw hot-reloads; restart is per-framework, declared by the adapter (§6/§10).
+8. **Framework installs must be sandboxed** — the hermes installer hijacked the host `node` PATH during the spike; the app must isolate framework installs (isolated PATH/prefix or container) and bundle/isolate openclaw's Node 22, never touching host runtimes.
