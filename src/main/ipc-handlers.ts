@@ -5,6 +5,7 @@ import { OllamaManager } from "./ollama-manager";
 import { RateLimiter } from "./rate-limiter";
 import { detectHardware, selectModel } from "./hardware-detector";
 import { getAppPaths } from "./paths";
+import { FRAMEWORKS } from "./framework-registry";
 import type { ModelChoice, UserProfile, TaskUsage } from "../shared/types";
 
 let ollamaManager: OllamaManager | null = null;
@@ -25,6 +26,8 @@ export function registerIpcHandlers(db: Database, rateLimiter: RateLimiter) {
     }
     return selectedModel;
   });
+
+  ipcMain.handle("get-frameworks", () => FRAMEWORKS);
 
   ipcMain.handle("ollama-status", () => ollamaState);
 

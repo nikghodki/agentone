@@ -5,6 +5,7 @@ import { Database } from "./database";
 import { RateLimiter } from "./rate-limiter";
 import { registerIpcHandlers, shutdownServices } from "./ipc-handlers";
 import { getAppPaths } from "./paths";
+import { seedFrameworkRegistry } from "./framework-registry";
 
 let mainWindow: BrowserWindow | null = null;
 let db: Database | null = null;
@@ -36,6 +37,7 @@ app.whenReady().then(() => {
 
   db = new Database(paths.database);
   db.initialize();
+  seedFrameworkRegistry(db);
 
   app.on("will-quit", () => {
     shutdownServices();
