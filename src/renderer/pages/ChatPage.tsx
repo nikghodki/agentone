@@ -26,13 +26,14 @@ export function ChatPage() {
   const { generate } = useLLM();
   const [messages, setMessages] = useState<Message[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const skipLoadRef = useRef(false);
 
   const persona = selectedPersonaId ? getPersonaById(selectedPersonaId) : null;
   const systemPrompt = persona?.system_prompt || "You are a helpful AI assistant.";
 
   useEffect(() => {
     async function loadMessages() {
-      if (currentConversationId) {
+      if (currentConversationId && !skipLoadRef.current) {
         const msgs = await window.electronAPI.dbGetMessages(currentConversationId);
         setMessages(msgs);
       }
@@ -46,33 +47,38 @@ export function ChatPage() {
 
   async function handleSend(text: string) {
     let convId = currentConversationId;
-    if (!convId) {
-      const conv = await window.electronAPI.dbCreateConversation(null);
-      convId = conv.id;
-      setCurrentConversationId(convId);
+    try {
+      if (!convId) {
+        skipLoadRef.current = true;
+        const conv = await window.electronAPI.dbCreateConversation(null);
+        convId = conv.id;
+        setCurrentConversationId(convId);
+      }
+
+      const userMsg: Message = {
+        id: crypto.randomUUID(),
+        conversationId: convId,
+        role: "user",
+        content: text,
+        createdAt: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, userMsg]);
+      clearStreamingText();
+
+      const result = await generate(text, systemPrompt, convId);
+
+      const assistantMsg: Message = {
+        id: crypto.randomUUID(),
+        conversationId: convId,
+        role: "assistant",
+        content: result,
+        createdAt: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, assistantMsg]);
+      clearStreamingText();
+    } finally {
+      skipLoadRef.current = false;
     }
-
-    const userMsg: Message = {
-      id: crypto.randomUUID(),
-      conversationId: convId,
-      role: "user",
-      content: text,
-      createdAt: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
-    clearStreamingText();
-
-    const result = await generate(text, systemPrompt, convId);
-
-    const assistantMsg: Message = {
-      id: crypto.randomUUID(),
-      conversationId: convId,
-      role: "assistant",
-      content: result,
-      createdAt: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, assistantMsg]);
-    clearStreamingText();
   }
 
   return (

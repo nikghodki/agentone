@@ -36,7 +36,10 @@ export function ChatInput({ onSend, disabled, suggestions }: ChatInputProps) {
           {suggestions.map((s) => (
             <button
               key={s}
-              onClick={() => onSend(s)}
+              onClick={() => {
+                onSend(s);
+                setText("");
+              }}
               disabled={disabled}
               className="px-3 py-1 bg-zinc-900 border border-zinc-700 rounded-full text-xs text-zinc-400 hover:border-zinc-500 hover:text-zinc-300 transition-colors disabled:opacity-40"
             >
