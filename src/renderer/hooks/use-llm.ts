@@ -22,6 +22,10 @@ export function useLLM() {
       clearStreamingText();
       setIsGenerating(true);
 
+      if (unsubRef.current) {
+        unsubRef.current();
+        unsubRef.current = null;
+      }
       unsubRef.current = window.electronAPI.onGenerateToken((token) => {
         appendStreamingText(token);
       });

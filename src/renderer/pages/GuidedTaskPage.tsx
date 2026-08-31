@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAppStore } from "../store";
 import { getPersonaById } from "../lib/persona-loader";
 import { buildPrompt, collectFlowValues } from "../lib/prompt-builder";
@@ -11,50 +11,65 @@ export function GuidedTaskPage() {
     useAppStore();
   const { generate } = useLLM();
   const [result, setResult] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  if (!guidedTaskContext) {
-    setView("dashboard");
-    return null;
-  }
+  useEffect(() => {
+    if (!guidedTaskContext) {
+      setView("dashboard");
+      return;
+    }
+    const p = getPersonaById(guidedTaskContext.personaId);
+    const t = p?.tasks.find((x) => x.id === guidedTaskContext.taskId);
+    if (!p || !t) setView("dashboard");
+  }, [guidedTaskContext, setView]);
+
+  if (!guidedTaskContext) return null;
 
   const persona = getPersonaById(guidedTaskContext.personaId);
   const task = persona?.tasks.find((t) => t.id === guidedTaskContext.taskId);
 
-  if (!persona || !task) {
-    setView("dashboard");
-    return null;
-  }
+  if (!persona || !task) return null;
 
   async function handleSubmit(formValues: Record<string, string>) {
     setResult(null);
-    clearStreamingText();
+    setErrorMsg(null);
 
-    const values = collectFlowValues(task!.guided_flow, formValues);
-    const prompt = buildPrompt(task!.guided_flow, values);
+    try {
+      const values = collectFlowValues(task!.guided_flow, formValues);
+      const prompt = buildPrompt(task!.guided_flow, values);
 
-    const conv = await window.electronAPI.dbCreateConversation(task!.id);
-    setConversationId(conv.id);
+      const conv = await window.electronAPI.dbCreateConversation(task!.id);
+      setConversationId(conv.id);
 
-    await window.electronAPI.dbRecordTaskUsage({
-      taskId: task!.id,
-      persona: persona!.id,
-      startedAt: new Date().toISOString(),
-      completed: true,
-      durationSeconds: null,
-    });
+      await window.electronAPI.dbRecordTaskUsage({
+        taskId: task!.id,
+        persona: persona!.id,
+        startedAt: new Date().toISOString(),
+        completed: true,
+        durationSeconds: null,
+      });
 
-    const fullResult = await generate(prompt, persona!.system_prompt, conv.id);
-    setResult(fullResult);
+      const fullResult = await generate(prompt, persona!.system_prompt, conv.id);
+      setResult(fullResult);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "An unknown error occurred";
+      setErrorMsg(message);
+    }
   }
 
   async function handleRegenerate() {
     if (!conversationId) return;
-    clearStreamingText();
     setResult(null);
-    const fullResult = await generate("Please regenerate the previous response with a different approach.", persona!.system_prompt, conversationId);
-    setResult(fullResult);
+    setErrorMsg(null);
+    try {
+      const fullResult = await generate("Please regenerate the previous response with a different approach.", persona!.system_prompt, conversationId);
+      setResult(fullResult);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "An unknown error occurred";
+      setErrorMsg(message);
+    }
   }
 
   function handleCopy() {
@@ -86,6 +101,13 @@ export function GuidedTaskPage() {
           onSubmit={handleSubmit}
           isGenerating={isGenerating}
         />
+
+        {/* Error message */}
+        {errorMsg && (
+          <div className="mt-6 bg-red-950 border border-red-800 rounded-xl p-4 text-red-200">
+            <span className="mr-2">⚠️</span>{errorMsg}
+          </div>
+        )}
 
         {/* Streaming / Result */}
         <div className="mt-6">
