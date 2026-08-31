@@ -178,10 +178,11 @@ export class ZeptoclawAdapter implements FrameworkAdapter {
    * Per verified doc: `zeptoclaw agent` (interactive mode)
    */
   async start(): Promise<void> {
-    // Build sandboxed env with API key
+    // Build sandboxed env with EXPLICIT PATH (no host PATH inheritance)
+    // Standard bin dirs for zeptoclaw's built-in tools (git, shell, etc.)
     const env: Record<string, string> = {
       HOME: process.env.HOME || "",
-      PATH: process.env.PATH || "",
+      PATH: "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
     };
 
     // Inject API key from secrets if needed
@@ -293,10 +294,13 @@ export class ZeptoclawAdapter implements FrameworkAdapter {
   /**
    * Check if a line is a spinner animation (should be filtered).
    * Per verified doc: "  ⠋ Thinking..." with animation characters.
+   * Only matches lines that START with a spinner glyph (after trimming).
    */
   private isSpinnerLine(line: string): boolean {
     // Spinner characters: ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏
-    return /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(line) || line.includes("Thinking");
+    // Match only if the trimmed line STARTS with a spinner glyph
+    const trimmed = line.trim();
+    return /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(trimmed);
   }
 
   /**

@@ -229,8 +229,9 @@ describe("ZeptoclawAdapter", () => {
       expect(cmd).toBe("zeptoclaw");
       expect(args).toEqual(["agent"]);
 
-      // Verify sandboxed env with API key
+      // Verify sandboxed env with EXPLICIT PATH (no host PATH inheritance)
       expect(opts.env).toBeDefined();
+      expect(opts.env.PATH).toBe("/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin");
       expect(opts.env.ANTHROPIC_API_KEY).toBe("test-api-key-12345");
 
       // Verify secrets.get was called with the secretRef
@@ -280,7 +281,7 @@ describe("ZeptoclawAdapter", () => {
   });
 
   describe("sendTask() / streamOutput()", () => {
-    it("parses token stream with buffering, including split tokens", async () => {
+    it("parses token stream with buffering across newline boundaries", async () => {
       const { Readable } = await import("stream");
 
       // Create a fake child process with stdin/stdout
@@ -306,23 +307,25 @@ describe("ZeptoclawAdapter", () => {
       adapter = new ZeptoclawAdapter(tempDir, mockProbe, mockProcessManager as any);
 
       // Start streaming
-      const tokens: string[] = [];
+      const lines: string[] = [];
       const unsubscribe = adapter.streamOutput((chunk) => {
-        tokens.push(chunk);
+        lines.push(chunk);
       });
 
-      // Emit token stream with one token split across two chunks
-      // This tests the buffering logic
-      fakeStdout.push("Hello ");
-      fakeStdout.push("wor");  // Split "world" across chunks
-      fakeStdout.push("ld!");
-      fakeStdout.push(null);  // End stream
+      // Emit token stream with lines split across chunk boundaries
+      // This tests real cross-newline buffering
+      fakeStdout.push("Hello wor");        // Partial line
+      fakeStdout.push("ld\nHow are");      // Complete first line + partial second
+      fakeStdout.push(" you?\n");          // Complete second line
+      fakeStdout.push(null);               // End stream
 
       // Wait for stream to be processed
       await new Promise(resolve => setTimeout(resolve, 50));
 
-      // Verify tokens were received in order
-      expect(tokens.join("")).toBe("Hello world!");
+      // Verify both lines were delivered correctly (none dropped, none merged wrong)
+      expect(lines).toHaveLength(2);
+      expect(lines[0]).toBe("Hello world");
+      expect(lines[1]).toBe("How are you?");
 
       // Cleanup
       unsubscribe();
@@ -351,7 +354,7 @@ describe("ZeptoclawAdapter", () => {
       expect(fakeStdin.write).toHaveBeenCalledWith("What is 2+2?\n");
     });
 
-    it("streamOutput() filters out spinner animation", async () => {
+    it("streamOutput() filters out spinner animation lines only", async () => {
       const { Readable } = await import("stream");
 
       const fakeStdout = new Readable({
@@ -370,23 +373,26 @@ describe("ZeptoclawAdapter", () => {
       const mockProbe = vi.fn().mockResolvedValue(true);
       adapter = new ZeptoclawAdapter(tempDir, mockProbe, mockProcessManager as any);
 
-      const tokens: string[] = [];
+      const lines: string[] = [];
       adapter.streamOutput((chunk) => {
-        tokens.push(chunk);
+        lines.push(chunk);
       });
 
-      // Emit stream with spinner (should be filtered)
-      fakeStdout.push("  ⠋ Thinking...");
-      fakeStdout.push("\rThe answer is 4");
+      // Emit stream with spinner lines and legitimate content
+      fakeStdout.push("  ⠋ Thinking...\n");           // Real spinner - should be filtered
+      fakeStdout.push("⠹ Working\n");                 // Real spinner - should be filtered
+      fakeStdout.push("The answer is 4\n");           // Legitimate - keep
+      fakeStdout.push("I was Thinking about it\n");   // Legitimate (mid-content) - keep
+      fakeStdout.push("The result is ⠋ braille\n");  // Legitimate (mid-content) - keep
       fakeStdout.push(null);
 
       await new Promise(resolve => setTimeout(resolve, 50));
 
-      // Verify spinner was filtered out
-      const output = tokens.join("");
-      expect(output).not.toContain("⠋");
-      expect(output).not.toContain("Thinking");
-      expect(output).toContain("The answer is 4");
+      // Verify only spinner lines were filtered
+      expect(lines).toHaveLength(3);
+      expect(lines[0]).toBe("The answer is 4");
+      expect(lines[1]).toBe("I was Thinking about it");
+      expect(lines[2]).toBe("The result is ⠋ braille");
     });
   });
 });
