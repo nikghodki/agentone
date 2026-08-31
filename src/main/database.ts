@@ -1,6 +1,7 @@
 import BetterSqlite3 from "better-sqlite3";
 import { randomUUID } from "crypto";
 import type { UserProfile, Conversation, Message, TaskUsage } from "../shared/types";
+import type { FrameworkMeta, NewDeployment, Deployment, ModelBackendConfig, InstalledCapability } from "../shared/v2-types";
 
 export class Database {
   private db: BetterSqlite3.Database;
@@ -58,6 +59,44 @@ export class Database {
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS frameworks (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        features TEXT NOT NULL,
+        install_recipe TEXT NOT NULL,
+        is_default INTEGER DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS deployments (
+        id TEXT PRIMARY KEY,
+        framework_id TEXT NOT NULL REFERENCES frameworks(id),
+        location TEXT NOT NULL CHECK(location IN ('local', 'remote')),
+        remote_url TEXT,
+        model_backend_id TEXT,
+        status TEXT DEFAULT 'pending',
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS model_backends (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        provider TEXT,
+        base_url TEXT,
+        protocol TEXT NOT NULL,
+        model TEXT NOT NULL,
+        secret_ref TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS capabilities (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        deployment_id TEXT NOT NULL REFERENCES deployments(id),
+        type TEXT NOT NULL CHECK(type IN ('mcp', 'plugin', 'skill')),
+        name TEXT NOT NULL,
+        source TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_capabilities_deployment_id ON capabilities(deployment_id);
     `);
   }
 
@@ -166,6 +205,129 @@ export class Database {
          ON CONFLICT(date) DO UPDATE SET count = count + 1`
       )
       .run(today);
+  }
+
+  seedFrameworks(list: FrameworkMeta[]): void {
+    for (const fw of list) {
+      this.db
+        .prepare(
+          `INSERT OR REPLACE INTO frameworks (id, name, features, install_recipe, is_default)
+           VALUES (?, ?, ?, ?, ?)`
+        )
+        .run(
+          fw.id,
+          fw.name,
+          JSON.stringify(fw.features),
+          JSON.stringify(fw.installRecipe),
+          fw.isDefault ? 1 : 0
+        );
+    }
+  }
+
+  getFrameworks(): FrameworkMeta[] {
+    return this.db
+      .prepare("SELECT * FROM frameworks")
+      .all()
+      .map((row: any) => {
+        let features: string[] = [];
+        let installRecipe: Record<string, unknown> = {};
+        try {
+          features = JSON.parse(row.features);
+        } catch {
+          features = [];
+        }
+        try {
+          installRecipe = JSON.parse(row.install_recipe);
+        } catch {
+          installRecipe = {};
+        }
+        return {
+          id: row.id,
+          name: row.name,
+          features,
+          installRecipe,
+          isDefault: row.is_default === 1,
+        };
+      });
+  }
+
+  createDeployment(d: NewDeployment): Deployment {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    this.db
+      .prepare(
+        `INSERT INTO deployments (id, framework_id, location, remote_url, model_backend_id, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(id, d.frameworkId, d.location, d.remoteUrl, d.modelBackendId, "pending", now);
+    return {
+      id,
+      frameworkId: d.frameworkId,
+      location: d.location,
+      remoteUrl: d.remoteUrl,
+      modelBackendId: d.modelBackendId,
+      status: "pending",
+      createdAt: now,
+    };
+  }
+
+  getDeployments(): Deployment[] {
+    return this.db
+      .prepare("SELECT * FROM deployments ORDER BY created_at DESC")
+      .all()
+      .map((row: any) => ({
+        id: row.id,
+        frameworkId: row.framework_id,
+        location: row.location,
+        remoteUrl: row.remote_url,
+        modelBackendId: row.model_backend_id,
+        status: row.status,
+        createdAt: row.created_at,
+      }));
+  }
+
+  saveModelBackend(b: ModelBackendConfig): void {
+    this.db
+      .prepare(
+        `INSERT OR REPLACE INTO model_backends (id, kind, provider, base_url, protocol, model, secret_ref)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(b.id, b.kind, b.provider, b.baseUrl, b.protocol, b.model, b.secretRef);
+  }
+
+  getModelBackend(id: string): ModelBackendConfig | null {
+    const row = this.db.prepare("SELECT * FROM model_backends WHERE id = ?").get(id) as any;
+    if (!row) return null;
+    return {
+      id: row.id,
+      kind: row.kind,
+      provider: row.provider,
+      baseUrl: row.base_url,
+      protocol: row.protocol,
+      model: row.model,
+      secretRef: row.secret_ref,
+    };
+  }
+
+  recordCapability(c: InstalledCapability): void {
+    this.db
+      .prepare(
+        `INSERT INTO capabilities (deployment_id, type, name, source)
+         VALUES (?, ?, ?, ?)`
+      )
+      .run(c.deploymentId, c.type, c.name, c.source);
+  }
+
+  getCapabilities(deploymentId: string): InstalledCapability[] {
+    return this.db
+      .prepare("SELECT * FROM capabilities WHERE deployment_id = ?")
+      .all(deploymentId)
+      .map((row: any) => ({
+        deploymentId: row.deployment_id,
+        type: row.type,
+        name: row.name,
+        source: row.source,
+      }));
   }
 
   close(): void {
