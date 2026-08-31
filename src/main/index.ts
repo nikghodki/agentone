@@ -1,5 +1,10 @@
 import { app, BrowserWindow } from "electron";
 import path from "path";
+import fs from "fs";
+import { Database } from "./database";
+import { RateLimiter } from "./rate-limiter";
+import { registerIpcHandlers } from "./ipc-handlers";
+import { getAppPaths } from "./paths";
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -24,12 +29,23 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  const paths = getAppPaths();
+  fs.mkdirSync(paths.models, { recursive: true });
+
+  const db = new Database(paths.database);
+  db.initialize();
+
+  const rateLimiter = new RateLimiter(20);
+  registerIpcHandlers(db, rateLimiter);
+
+  createWindow();
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
-});
-
-app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
