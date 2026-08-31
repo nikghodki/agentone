@@ -3,6 +3,7 @@ import { SetupPage } from "./pages/SetupPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { GuidedTaskPage } from "./pages/GuidedTaskPage";
+import { ChatPage } from "./pages/ChatPage";
 
 function Placeholder({ name }: { name: string }) {
   return (
@@ -26,7 +27,7 @@ export function App() {
     case "guided-task":
       return <GuidedTaskPage />;
     case "chat":
-      return <Placeholder name="Freeform Chat" />;
+      return <ChatPage />;
     case "settings":
       return <Placeholder name="Settings" />;
     default:
