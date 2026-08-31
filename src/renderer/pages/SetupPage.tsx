@@ -9,6 +9,7 @@ export function SetupPage() {
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
     async function setup() {
       try {
         const model = await window.electronAPI.getModelChoice();
@@ -17,13 +18,12 @@ export function SetupPage() {
         setStatus("downloading");
         setOllamaStatus("starting");
 
-        const unsubscribe = window.electronAPI.onModelDownloadProgress((progress) => {
+        unsubscribe = window.electronAPI.onModelDownloadProgress((progress) => {
           setModelDownloadProgress(progress);
         });
 
         await window.electronAPI.ollamaStartAndPull();
 
-        unsubscribe();
         setOllamaStatus("ready");
         setStatus("ready");
 
@@ -41,7 +41,8 @@ export function SetupPage() {
     }
 
     setup();
-  }, []);
+    return () => { if (unsubscribe) unsubscribe(); };
+  }, [setView, setOllamaStatus, setModelDownloadProgress]);
 
   return (
     <div className="flex flex-col items-center justify-center h-screen gap-6 p-8">
