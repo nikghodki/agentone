@@ -1,0 +1,70 @@
+{
+  "id": "small-business",
+  "name": "Small Business Owner",
+  "icon": "store",
+  "system_prompt": "You are a helpful AI assistant for small business owners. Be practical, results-oriented, and mindful of limited budgets and time. Focus on actionable advice that can be implemented immediately. When writing copy, optimize for conversion and SEO.",
+  "tasks": [
+    {
+      "id": "product_description",
+      "title": "Write a product description",
+      "subtitle": "SEO-optimized copy for your listings",
+      "icon": "tag",
+      "category": "marketing",
+      "guided_flow": {
+        "fields": [
+          { "type": "text", "label": "Product name", "placeholder": "e.g., 'Handmade Lavender Soy Candle'" },
+          { "type": "textarea", "label": "Product details", "placeholder": "Material, size, features, what makes it special..." },
+          { "type": "choice", "label": "Platform", "options": ["Etsy", "Amazon", "Shopify", "eBay", "General (any platform)"] },
+          { "type": "choice", "label": "Tone", "options": ["Professional", "Fun and casual", "Luxurious/premium", "Earthy/artisan"] }
+        ],
+        "prompt_template": "Write a {{tone}} product description for {{platform}} for:\nProduct: {{product_name}}\nDetails: {{product_details}}\n\nInclude:\n- A compelling title with relevant keywords\n- 3-4 paragraph description highlighting benefits\n- Key features as bullet points\n- SEO-friendly language for the platform"
+      }
+    },
+    {
+      "id": "review_reply",
+      "title": "Reply to a review",
+      "subtitle": "Professional responses to customer reviews",
+      "icon": "message-square",
+      "category": "customer-service",
+      "guided_flow": {
+        "fields": [
+          { "type": "choice", "label": "Review type", "options": ["Positive (4-5 stars)", "Mixed (3 stars)", "Negative (1-2 stars)"] },
+          { "type": "textarea", "label": "Paste the review", "placeholder": "Paste the customer's review here..." },
+          { "type": "textarea", "label": "Context (optional)", "optional": true, "placeholder": "Any background info? e.g., 'We already issued a refund'" }
+        ],
+        "prompt_template": "Write a professional, empathetic response to this {{review_type}} customer review:\n\nReview: {{paste_the_review}}\n{{#if context_optional}}Context: {{context_optional}}{{/if}}\n\nThe response should:\n- Thank the customer\n- Address their specific points\n- Be professional and non-defensive\n- End positively\n- Under 100 words"
+      }
+    },
+    {
+      "id": "social_post",
+      "title": "Create a social media post",
+      "subtitle": "Ready-to-post content for any platform",
+      "icon": "share",
+      "category": "marketing",
+      "guided_flow": {
+        "fields": [
+          { "type": "textarea", "label": "What do you want to post about?", "placeholder": "e.g., 'New product launch', 'Holiday sale', 'Behind the scenes'" },
+          { "type": "choice", "label": "Platform", "options": ["Instagram", "Facebook", "Twitter/X", "LinkedIn", "TikTok caption"] },
+          { "type": "choice", "label": "Goal", "options": ["Drive sales", "Build engagement", "Educate/inform", "Entertain", "Announce something"] }
+        ],
+        "prompt_template": "Write a {{platform}} post to {{goal}} about: {{what_do_you_want_to_post_about}}\n\nInclude:\n- An attention-grabbing opening\n- The core message\n- A clear call-to-action\n- Relevant hashtags (3-5)\n- Appropriate length for the platform"
+      }
+    },
+    {
+      "id": "professional_message",
+      "title": "Draft a professional message",
+      "subtitle": "Client emails, vendor messages, proposals",
+      "icon": "send",
+      "category": "communication",
+      "guided_flow": {
+        "fields": [
+          { "type": "choice", "label": "Who is this for?", "options": ["Client/customer", "Vendor/supplier", "Partner/collaborator", "Employee/contractor"] },
+          { "type": "textarea", "label": "What do you need to communicate?", "placeholder": "Describe the situation and what you want to say..." },
+          { "type": "choice", "label": "Tone", "options": ["Professional and warm", "Direct and efficient", "Formal/contractual", "Casual but businesslike"] }
+        ],
+        "prompt_template": "Write a {{tone}} message to a {{who_is_this_for}}.\n\nSituation: {{what_do_you_need_to_communicate}}\n\nKeep it clear, professional, and under 200 words."
+      }
+    }
+  ],
+  "discovery_queue": ["invoice_email", "job_posting", "faq_answers", "business_plan_section", "competitor_analysis"]
+}

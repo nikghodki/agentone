@@ -1,0 +1,68 @@
+{
+  "id": "parent",
+  "name": "Parent / Family",
+  "icon": "heart",
+  "system_prompt": "You are a warm, helpful AI assistant for parents and families. Be patient, practical, and encouraging. When helping with kids' homework, explain step-by-step at an age-appropriate level. For parenting questions, be supportive without being judgmental.",
+  "tasks": [
+    {
+      "id": "homework_help",
+      "title": "Help with homework",
+      "subtitle": "Step-by-step explanations for any subject",
+      "icon": "book-open",
+      "category": "education",
+      "guided_flow": {
+        "fields": [
+          { "type": "choice", "label": "Subject", "options": ["Math", "Science", "English/Language Arts", "History/Social Studies", "Foreign Language"] },
+          { "type": "textarea", "label": "The homework question", "placeholder": "Type or paste the homework question..." },
+          { "type": "choice", "label": "Grade level", "options": ["Elementary (K-5)", "Middle school (6-8)", "High school (9-12)"] }
+        ],
+        "prompt_template": "Help a {{grade_level}} student with this {{subject}} homework question. Explain step-by-step in a way that helps them understand the concept, not just the answer. Use simple language appropriate for their level.\n\nQuestion: {{the_homework_question}}"
+      }
+    },
+    {
+      "id": "explain_to_kid",
+      "title": "Explain to my kid",
+      "subtitle": "Kid-friendly explanations of anything",
+      "icon": "message-circle",
+      "category": "education",
+      "guided_flow": {
+        "fields": [
+          { "type": "textarea", "label": "What needs explaining?", "placeholder": "e.g., 'Why is the sky blue?', 'What is inflation?'" },
+          { "type": "choice", "label": "Child's age", "options": ["3-5 years old", "6-8 years old", "9-11 years old", "12-14 years old"] }
+        ],
+        "prompt_template": "Explain the following concept to a {{childs_age}} child. Use a fun analogy they can relate to, keep it short (3-4 sentences), and make it engaging.\n\nConcept: {{what_needs_explaining}}"
+      }
+    },
+    {
+      "id": "plan_activity",
+      "title": "Plan an activity",
+      "subtitle": "Fun ideas for kids and family time",
+      "icon": "sun",
+      "category": "family",
+      "guided_flow": {
+        "fields": [
+          { "type": "text", "label": "Kids' ages", "placeholder": "e.g., '4 and 7'" },
+          { "type": "choice", "label": "Activity type", "options": ["Indoor (at home)", "Outdoor", "Educational", "Creative/artsy", "Active/physical"] },
+          { "type": "choice", "label": "Time available", "options": ["30 minutes", "1-2 hours", "Half day", "Full day"] }
+        ],
+        "prompt_template": "Suggest 5 {{activity_type}} activities for kids aged {{kids_ages}} that take about {{time_available}}. For each activity, include:\n- What you need (materials/supplies)\n- Simple step-by-step instructions\n- Why kids will enjoy it"
+      }
+    },
+    {
+      "id": "teacher_note",
+      "title": "Write a note to teacher",
+      "subtitle": "Clear, polite messages for school",
+      "icon": "edit",
+      "category": "communication",
+      "guided_flow": {
+        "fields": [
+          { "type": "choice", "label": "What is this about?", "options": ["Absence/tardiness", "Behavior concern", "Academic question", "Schedule/event question", "Appreciation/thank you", "Special request"] },
+          { "type": "textarea", "label": "Describe the situation", "placeholder": "What do you need to tell the teacher?" },
+          { "type": "choice", "label": "Tone", "options": ["Polite and warm", "Concerned but respectful", "Direct and factual"] }
+        ],
+        "prompt_template": "Write a {{tone}} note to my child's teacher about: {{what_is_this_about}}\n\nSituation: {{describe_the_situation}}\n\nKeep it concise (under 150 words), professional, and parent-appropriate."
+      }
+    }
+  ],
+  "discovery_queue": ["bedtime_story", "meal_ideas", "chore_chart", "screen_time_alternatives", "birthday_planning"]
+}
