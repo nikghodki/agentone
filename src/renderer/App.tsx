@@ -2,6 +2,7 @@ import { useAppStore } from "./store";
 import { SetupPage } from "./pages/SetupPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { GuidedTaskPage } from "./pages/GuidedTaskPage";
 
 function Placeholder({ name }: { name: string }) {
   return (
@@ -23,7 +24,7 @@ export function App() {
     case "dashboard":
       return <DashboardPage />;
     case "guided-task":
-      return <Placeholder name="Guided Task Flow" />;
+      return <GuidedTaskPage />;
     case "chat":
       return <Placeholder name="Freeform Chat" />;
     case "settings":
