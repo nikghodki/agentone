@@ -35,5 +35,6 @@ export interface FrameworkAdapter {
   streamOutput(cb: (chunk: string) => void): () => void;
   listCapabilities(): Promise<InstalledCapability[]>;
   installCapability(spec: { type: string; name: string }): Promise<void>;
+  requiresRestartAfterInstall(): boolean;
   restart(): Promise<void>;
 }

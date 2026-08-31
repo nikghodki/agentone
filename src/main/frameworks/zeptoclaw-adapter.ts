@@ -319,20 +319,71 @@ export class ZeptoclawAdapter implements FrameworkAdapter {
     }
   }
 
-  // Below methods are stubs for Task 4 (capabilities)
-
+  /**
+   * List installed capabilities (skills).
+   * Per verified doc: `zeptoclaw skills list` returns:
+   * Skills:
+   *   - skill-name (workspace, ready)
+   */
   async listCapabilities(): Promise<InstalledCapability[]> {
-    throw new Error("listCapabilities() not yet implemented (Task 4)");
+    const result = await this.execFn("zeptoclaw skills list");
+    const lines = result.stdout.split("\n");
+    const capabilities: InstalledCapability[] = [];
+
+    for (const line of lines) {
+      // Match lines like "  - skill-name (workspace, ready)"
+      const match = line.match(/^\s*-\s+(\S+)\s+\(/);
+      if (match) {
+        const skillName = match[1];
+        capabilities.push({
+          deploymentId: "zeptoclaw-local", // Single deployment for now
+          type: "skill",
+          name: skillName,
+          source: "zeptoclaw",
+        });
+      }
+    }
+
+    return capabilities;
   }
 
-  async installCapability(_spec: {
+  /**
+   * Install a capability (skill or MCP).
+   * Per verified doc:
+   * - Skills: `zeptoclaw skills install <skill-name>`
+   * - MCP: No CLI command, must edit config manually (not supported)
+   */
+  async installCapability(spec: {
     type: string;
     name: string;
   }): Promise<void> {
-    throw new Error("installCapability() not yet implemented (Task 4)");
+    if (spec.type === "mcp") {
+      throw new Error(
+        "MCP server installation not supported via CLI. Edit ~/.zeptoclaw/config.json manually."
+      );
+    }
+
+    if (spec.type === "skill") {
+      await this.execFn(`zeptoclaw skills install ${spec.name}`);
+      return;
+    }
+
+    throw new Error(`Unsupported capability type: ${spec.type}`);
   }
 
+  /**
+   * Check if restart is required after capability installation.
+   * Per verified doc: Zeptoclaw skills hot-reload, so NO restart is required.
+   */
+  requiresRestartAfterInstall(): boolean {
+    return false;
+  }
+
+  /**
+   * Restart the zeptoclaw agent: stop then start.
+   */
   async restart(): Promise<void> {
-    throw new Error("restart() not yet implemented (Task 3)");
+    await this.stop();
+    await this.start();
   }
 }

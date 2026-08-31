@@ -395,4 +395,119 @@ describe("ZeptoclawAdapter", () => {
       expect(lines[2]).toBe("The result is ⠋ braille");
     });
   });
+
+  describe("capabilities (Task 4)", () => {
+    it("listCapabilities() parses zeptoclaw skills list output", async () => {
+      const mockExec = vi.fn().mockResolvedValue({
+        stdout: `Skills:
+  - search-duckduckgo (workspace, ready)
+  - github-integration (workspace, ready)
+  - jira-connector (workspace, ready)`,
+        stderr: "",
+      });
+
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(tempDir, mockProbe, null as any, null as any, mockExec);
+
+      const capabilities = await adapter.listCapabilities();
+
+      // Verify exec was called with skills list command
+      expect(mockExec).toHaveBeenCalledWith("zeptoclaw skills list");
+
+      // Verify capabilities were parsed correctly
+      expect(capabilities).toHaveLength(3);
+      expect(capabilities[0]).toEqual({
+        deploymentId: expect.any(String),
+        type: "skill",
+        name: "search-duckduckgo",
+        source: "zeptoclaw",
+      });
+      expect(capabilities[1]).toEqual({
+        deploymentId: expect.any(String),
+        type: "skill",
+        name: "github-integration",
+        source: "zeptoclaw",
+      });
+      expect(capabilities[2]).toEqual({
+        deploymentId: expect.any(String),
+        type: "skill",
+        name: "jira-connector",
+        source: "zeptoclaw",
+      });
+    });
+
+    it("listCapabilities() returns empty array when no skills installed", async () => {
+      const mockExec = vi.fn().mockResolvedValue({
+        stdout: "Skills:\n",
+        stderr: "",
+      });
+
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(tempDir, mockProbe, null as any, null as any, mockExec);
+
+      const capabilities = await adapter.listCapabilities();
+
+      expect(capabilities).toEqual([]);
+    });
+
+    it("installCapability() runs verified install command for skill", async () => {
+      const mockExec = vi.fn().mockResolvedValue({
+        stdout: "Skill installed successfully\n",
+        stderr: "",
+      });
+
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(tempDir, mockProbe, null as any, null as any, mockExec);
+
+      await adapter.installCapability({ type: "skill", name: "my-skill" });
+
+      // Verify correct command was called
+      expect(mockExec).toHaveBeenCalledWith("zeptoclaw skills install my-skill");
+    });
+
+    it("installCapability() throws for unsupported MCP type", async () => {
+      const mockExec = vi.fn();
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(tempDir, mockProbe, null as any, null as any, mockExec);
+
+      await expect(
+        adapter.installCapability({ type: "mcp", name: "my-server" })
+      ).rejects.toThrow(/MCP server installation not supported/i);
+
+      // Should not have called exec
+      expect(mockExec).not.toHaveBeenCalled();
+    });
+
+    it("requiresRestartAfterInstall() returns false (hot reload)", () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(tempDir, mockProbe);
+
+      expect(adapter.requiresRestartAfterInstall()).toBe(false);
+    });
+
+    it("restart() calls stop then start in order", async () => {
+      const callOrder: string[] = [];
+
+      const mockProcessManager = {
+        start: vi.fn().mockImplementation(() => {
+          callOrder.push("start");
+        }),
+        stop: vi.fn().mockImplementation(() => {
+          callOrder.push("stop");
+          return Promise.resolve();
+        }),
+        isRunning: vi.fn().mockReturnValue(true),
+      };
+
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(tempDir, mockProbe, mockProcessManager as any);
+
+      await adapter.restart();
+
+      // Verify stop was called before start
+      expect(callOrder).toEqual(["stop", "start"]);
+      expect(mockProcessManager.stop).toHaveBeenCalledOnce();
+      expect(mockProcessManager.start).toHaveBeenCalledOnce();
+    });
+  });
 });
