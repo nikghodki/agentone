@@ -1,6 +1,6 @@
 import { promises as fs } from "fs";
 import * as path from "path";
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
 import { promisify } from "util";
 import { Readable } from "stream";
 import {
@@ -13,6 +13,7 @@ import { ProcessManager } from "./process-manager";
 import { Secrets } from "../secrets";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 /**
  * Default probe function to check if a binary exists.
@@ -32,6 +33,7 @@ interface ExecResult {
 }
 
 type ExecFunction = (cmd: string) => Promise<ExecResult>;
+type ExecWithArgsFunction = (cmd: string, args: string[]) => Promise<ExecResult>;
 
 /**
  * ZeptoclawAdapter implements the FrameworkAdapter interface for ZeptoClaw.
@@ -47,6 +49,7 @@ export class ZeptoclawAdapter implements FrameworkAdapter {
   private processManager: ProcessManager;
   private secrets: Secrets | null;
   private execFn: ExecFunction;
+  private execWithArgsFn: ExecWithArgsFunction;
   private currentBackend: ModelBackendConfig | null = null;
 
   /**
@@ -55,19 +58,49 @@ export class ZeptoclawAdapter implements FrameworkAdapter {
    * @param processManager - ProcessManager for spawning child processes (injectable for tests)
    * @param secrets - Secrets store for API keys (injectable for tests)
    * @param execFn - Function to execute shell commands (injectable for tests)
+   * @param execWithArgs - Function to execute commands with arg array (injectable for tests, defaults to execFile)
    */
   constructor(
     configDir: string = path.join(process.env.HOME || "~", ".zeptoclaw"),
     probe: (binaryName: string) => Promise<boolean> = defaultProbe,
     processManager?: ProcessManager,
     secrets?: Secrets | null,
-    execFn?: ExecFunction
+    execFn?: ExecFunction,
+    execWithArgs?: ExecWithArgsFunction
   ) {
     this.configDir = configDir;
     this.probe = probe;
     this.processManager = processManager || new ProcessManager();
     this.secrets = secrets !== undefined ? secrets : null;
     this.execFn = execFn || (execAsync as ExecFunction);
+    this.execWithArgsFn = execWithArgs || this.defaultExecWithArgs.bind(this);
+  }
+
+  /**
+   * Default implementation of execWithArgs using execFile (no shell parsing).
+   * This prevents command injection by passing arguments as an array.
+   */
+  private async defaultExecWithArgs(cmd: string, args: string[]): Promise<ExecResult> {
+    const { stdout, stderr } = await execFileAsync(cmd, args);
+    return { stdout, stderr };
+  }
+
+  /**
+   * Validate capability name to prevent command injection.
+   * Allows alphanumeric, dots, underscores, @, forward slashes, and hyphens.
+   * This supports scoped/marketplace names like @scope/skill-name.
+   *
+   * SECURITY: Defense-in-depth against command injection. Even though we use
+   * argument arrays (no shell parsing), validation provides an extra layer.
+   */
+  private validateCapabilityName(name: string): void {
+    const safePattern = /^[A-Za-z0-9._@/-]+$/;
+    if (!safePattern.test(name)) {
+      throw new Error(
+        `Invalid capability name: "${name}". ` +
+        `Only alphanumeric characters and ._@/- are allowed.`
+      );
+    }
   }
 
   /**
@@ -324,9 +357,11 @@ export class ZeptoclawAdapter implements FrameworkAdapter {
    * Per verified doc: `zeptoclaw skills list` returns:
    * Skills:
    *   - skill-name (workspace, ready)
+   *
+   * SECURITY: Uses argument array to prevent command injection.
    */
   async listCapabilities(): Promise<InstalledCapability[]> {
-    const result = await this.execFn("zeptoclaw skills list");
+    const result = await this.execWithArgsFn("zeptoclaw", ["skills", "list"]);
     const lines = result.stdout.split("\n");
     const capabilities: InstalledCapability[] = [];
 
@@ -352,11 +387,18 @@ export class ZeptoclawAdapter implements FrameworkAdapter {
    * Per verified doc:
    * - Skills: `zeptoclaw skills install <skill-name>`
    * - MCP: No CLI command, must edit config manually (not supported)
+   *
+   * SECURITY: Two-layer defense against command injection:
+   * 1. Validates name against strict pattern (no shell metacharacters)
+   * 2. Uses argument array (execFile) instead of shell string interpolation
    */
   async installCapability(spec: {
     type: string;
     name: string;
   }): Promise<void> {
+    // Layer 1: Validate name (defense-in-depth)
+    this.validateCapabilityName(spec.name);
+
     if (spec.type === "mcp") {
       throw new Error(
         "MCP server installation not supported via CLI. Edit ~/.zeptoclaw/config.json manually."
@@ -364,7 +406,8 @@ export class ZeptoclawAdapter implements FrameworkAdapter {
     }
 
     if (spec.type === "skill") {
-      await this.execFn(`zeptoclaw skills install ${spec.name}`);
+      // Layer 2: Use argument array (no shell parsing)
+      await this.execWithArgsFn("zeptoclaw", ["skills", "install", spec.name]);
       return;
     }
 

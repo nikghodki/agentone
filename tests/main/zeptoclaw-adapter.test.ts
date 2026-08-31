@@ -398,7 +398,7 @@ describe("ZeptoclawAdapter", () => {
 
   describe("capabilities (Task 4)", () => {
     it("listCapabilities() parses zeptoclaw skills list output", async () => {
-      const mockExec = vi.fn().mockResolvedValue({
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
         stdout: `Skills:
   - search-duckduckgo (workspace, ready)
   - github-integration (workspace, ready)
@@ -407,12 +407,19 @@ describe("ZeptoclawAdapter", () => {
       });
 
       const mockProbe = vi.fn().mockResolvedValue(true);
-      adapter = new ZeptoclawAdapter(tempDir, mockProbe, null as any, null as any, mockExec);
+      adapter = new ZeptoclawAdapter(
+        tempDir,
+        mockProbe,
+        null as any,
+        null as any,
+        null as any,
+        mockExecWithArgs
+      );
 
       const capabilities = await adapter.listCapabilities();
 
-      // Verify exec was called with skills list command
-      expect(mockExec).toHaveBeenCalledWith("zeptoclaw skills list");
+      // Verify exec was called with argument array (no shell parsing)
+      expect(mockExecWithArgs).toHaveBeenCalledWith("zeptoclaw", ["skills", "list"]);
 
       // Verify capabilities were parsed correctly
       expect(capabilities).toHaveLength(3);
@@ -437,45 +444,133 @@ describe("ZeptoclawAdapter", () => {
     });
 
     it("listCapabilities() returns empty array when no skills installed", async () => {
-      const mockExec = vi.fn().mockResolvedValue({
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
         stdout: "Skills:\n",
         stderr: "",
       });
 
       const mockProbe = vi.fn().mockResolvedValue(true);
-      adapter = new ZeptoclawAdapter(tempDir, mockProbe, null as any, null as any, mockExec);
+      adapter = new ZeptoclawAdapter(
+        tempDir,
+        mockProbe,
+        null as any,
+        null as any,
+        null as any,
+        mockExecWithArgs
+      );
 
       const capabilities = await adapter.listCapabilities();
 
       expect(capabilities).toEqual([]);
     });
 
-    it("installCapability() runs verified install command for skill", async () => {
-      const mockExec = vi.fn().mockResolvedValue({
+    it("installCapability() runs verified install command for skill with arg array", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
         stdout: "Skill installed successfully\n",
         stderr: "",
       });
 
       const mockProbe = vi.fn().mockResolvedValue(true);
-      adapter = new ZeptoclawAdapter(tempDir, mockProbe, null as any, null as any, mockExec);
+      adapter = new ZeptoclawAdapter(
+        tempDir,
+        mockProbe,
+        null as any,
+        null as any,
+        null as any,
+        mockExecWithArgs
+      );
 
       await adapter.installCapability({ type: "skill", name: "my-skill" });
 
-      // Verify correct command was called
-      expect(mockExec).toHaveBeenCalledWith("zeptoclaw skills install my-skill");
+      // Verify command was called with argument array (no shell parsing)
+      expect(mockExecWithArgs).toHaveBeenCalledWith("zeptoclaw", ["skills", "install", "my-skill"]);
+    });
+
+    it("installCapability() accepts scoped capability names", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "Skill installed successfully\n",
+        stderr: "",
+      });
+
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(
+        tempDir,
+        mockProbe,
+        null as any,
+        null as any,
+        null as any,
+        mockExecWithArgs
+      );
+
+      // Test various valid scoped/marketplace names
+      await adapter.installCapability({ type: "skill", name: "@acme/web-search" });
+      await adapter.installCapability({ type: "skill", name: "org.example.skill-name" });
+      await adapter.installCapability({ type: "skill", name: "github/user/repo" });
+
+      expect(mockExecWithArgs).toHaveBeenCalledWith("zeptoclaw", ["skills", "install", "@acme/web-search"]);
+      expect(mockExecWithArgs).toHaveBeenCalledWith("zeptoclaw", ["skills", "install", "org.example.skill-name"]);
+      expect(mockExecWithArgs).toHaveBeenCalledWith("zeptoclaw", ["skills", "install", "github/user/repo"]);
+    });
+
+    it("installCapability() rejects malicious names with shell metacharacters", async () => {
+      const mockExecWithArgs = vi.fn();
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(
+        tempDir,
+        mockProbe,
+        null as any,
+        null as any,
+        null as any,
+        mockExecWithArgs
+      );
+
+      // Test various command injection attempts
+      await expect(
+        adapter.installCapability({ type: "skill", name: "foo; echo pwned" })
+      ).rejects.toThrow(/Invalid capability name/);
+
+      await expect(
+        adapter.installCapability({ type: "skill", name: "foo && bar" })
+      ).rejects.toThrow(/Invalid capability name/);
+
+      await expect(
+        adapter.installCapability({ type: "skill", name: "foo | cat /etc/passwd" })
+      ).rejects.toThrow(/Invalid capability name/);
+
+      await expect(
+        adapter.installCapability({ type: "skill", name: "foo`rm -rf /`" })
+      ).rejects.toThrow(/Invalid capability name/);
+
+      await expect(
+        adapter.installCapability({ type: "skill", name: "foo$(whoami)" })
+      ).rejects.toThrow(/Invalid capability name/);
+
+      await expect(
+        adapter.installCapability({ type: "skill", name: "foo\nbar" })
+      ).rejects.toThrow(/Invalid capability name/);
+
+      // Verify exec was NEVER called (validation blocked it)
+      expect(mockExecWithArgs).not.toHaveBeenCalled();
     });
 
     it("installCapability() throws for unsupported MCP type", async () => {
-      const mockExec = vi.fn();
+      const mockExecWithArgs = vi.fn();
       const mockProbe = vi.fn().mockResolvedValue(true);
-      adapter = new ZeptoclawAdapter(tempDir, mockProbe, null as any, null as any, mockExec);
+      adapter = new ZeptoclawAdapter(
+        tempDir,
+        mockProbe,
+        null as any,
+        null as any,
+        null as any,
+        mockExecWithArgs
+      );
 
       await expect(
         adapter.installCapability({ type: "mcp", name: "my-server" })
       ).rejects.toThrow(/MCP server installation not supported/i);
 
       // Should not have called exec
-      expect(mockExec).not.toHaveBeenCalled();
+      expect(mockExecWithArgs).not.toHaveBeenCalled();
     });
 
     it("requiresRestartAfterInstall() returns false (hot reload)", () => {
