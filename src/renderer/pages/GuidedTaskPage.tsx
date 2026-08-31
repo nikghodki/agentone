@@ -14,6 +14,7 @@ export function GuidedTaskPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [lastPrompt, setLastPrompt] = useState<string | null>(null);
 
   useEffect(() => {
     if (!guidedTaskContext) {
@@ -39,20 +40,24 @@ export function GuidedTaskPage() {
     try {
       const values = collectFlowValues(task!.guided_flow, formValues);
       const prompt = buildPrompt(task!.guided_flow, values);
+      setLastPrompt(prompt);
 
       const conv = await window.electronAPI.dbCreateConversation(task!.id);
       setConversationId(conv.id);
 
-      await window.electronAPI.dbRecordTaskUsage({
-        taskId: task!.id,
-        persona: persona!.id,
-        startedAt: new Date().toISOString(),
-        completed: true,
-        durationSeconds: null,
-      });
+      const startedAt = Date.now();
+      const startedAtIso = new Date().toISOString();
 
       const fullResult = await generate(prompt, persona!.system_prompt, conv.id);
       setResult(fullResult);
+
+      await window.electronAPI.dbRecordTaskUsage({
+        taskId: task!.id,
+        persona: persona!.id,
+        startedAt: startedAtIso,
+        completed: true,
+        durationSeconds: Math.round((Date.now() - startedAt) / 1000),
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : "An unknown error occurred";
       setErrorMsg(message);
@@ -60,11 +65,11 @@ export function GuidedTaskPage() {
   }
 
   async function handleRegenerate() {
-    if (!conversationId) return;
+    if (!conversationId || !lastPrompt) return;
     setResult(null);
     setErrorMsg(null);
     try {
-      const fullResult = await generate("Please regenerate the previous response with a different approach.", persona!.system_prompt, conversationId);
+      const fullResult = await generate(lastPrompt, persona!.system_prompt, conversationId);
       setResult(fullResult);
     } catch (err) {
       const message = err instanceof Error ? err.message : "An unknown error occurred";

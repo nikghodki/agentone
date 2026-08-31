@@ -3,7 +3,7 @@ import { useAppStore } from "../store";
 import { ModelProgress } from "../components/ModelProgress";
 
 export function SetupPage() {
-  const { setView, setOllamaStatus, setModelDownloadProgress, modelDownloadProgress } = useAppStore();
+  const { setView, setOllamaStatus, setModelDownloadProgress, modelDownloadProgress, selectPersona, setPriorities } = useAppStore();
   const [status, setStatus] = useState<"detecting" | "downloading" | "ready" | "error">("detecting");
   const [modelInfo, setModelInfo] = useState({ displayName: "", sizeGB: 0 });
   const [errorMsg, setErrorMsg] = useState("");
@@ -29,6 +29,8 @@ export function SetupPage() {
 
         const profile = await window.electronAPI.dbGetProfile();
         if (profile) {
+          selectPersona(profile.persona);
+          setPriorities(profile.priorities);
           setView("dashboard");
         } else {
           setView("onboarding-persona");
@@ -42,7 +44,7 @@ export function SetupPage() {
 
     setup();
     return () => { if (unsubscribe) unsubscribe(); };
-  }, [setView, setOllamaStatus, setModelDownloadProgress]);
+  }, [setView, setOllamaStatus, setModelDownloadProgress, selectPersona, setPriorities]);
 
   return (
     <div className="flex flex-col items-center justify-center h-screen gap-6 p-8">

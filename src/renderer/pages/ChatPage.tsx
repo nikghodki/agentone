@@ -25,6 +25,7 @@ export function ChatPage() {
 
   const { generate } = useLLM();
   const [messages, setMessages] = useState<Message[]>([]);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const skipLoadRef = useRef(false);
 
@@ -47,6 +48,7 @@ export function ChatPage() {
 
   async function handleSend(text: string) {
     let convId = currentConversationId;
+    setErrorMsg(null);
     try {
       if (!convId) {
         skipLoadRef.current = true;
@@ -76,6 +78,8 @@ export function ChatPage() {
       };
       setMessages((prev) => [...prev, assistantMsg]);
       clearStreamingText();
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Something went wrong.");
     } finally {
       skipLoadRef.current = false;
     }
@@ -113,6 +117,12 @@ export function ChatPage() {
 
         {isGenerating && streamingText && (
           <ChatMessage role="assistant" content={streamingText + "█"} />
+        )}
+
+        {errorMsg && (
+          <div className="mt-4 bg-red-950 border border-red-800 rounded-xl p-4 text-red-200">
+            <span className="mr-2">⚠️</span>{errorMsg}
+          </div>
         )}
       </div>
 
