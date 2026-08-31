@@ -4,6 +4,7 @@ import { OnboardingPage } from "./pages/OnboardingPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { GuidedTaskPage } from "./pages/GuidedTaskPage";
 import { ChatPage } from "./pages/ChatPage";
+import { SettingsPage } from "./pages/SettingsPage";
 
 function Placeholder({ name }: { name: string }) {
   return (
@@ -29,7 +30,7 @@ export function App() {
     case "chat":
       return <ChatPage />;
     case "settings":
-      return <Placeholder name="Settings" />;
+      return <SettingsPage />;
     default:
       return <Placeholder name="Unknown View" />;
   }
