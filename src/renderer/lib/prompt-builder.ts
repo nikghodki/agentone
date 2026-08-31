@@ -12,14 +12,14 @@ export function buildPrompt(flow: GuidedFlow, values: Record<string, string>): s
 
   result = result.replace(
     /\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g,
-    (_match, key: string, content: string) => {
+    (_match: string, key: string, content: string) => {
       const value = values[key];
       if (!value || value.trim() === "") return "";
       return content;
     }
   );
 
-  result = result.replace(/\{\{(\w+)\}\}/g, (_match, key: string) => {
+  result = result.replace(/\{\{(\w+)\}\}/g, (_match: string, key: string) => {
     return values[key] ?? "";
   });
 
