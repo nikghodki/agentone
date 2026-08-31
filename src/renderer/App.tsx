@@ -5,6 +5,8 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { GuidedTaskPage } from "./pages/GuidedTaskPage";
 import { ChatPage } from "./pages/ChatPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { FrameworkSelectPage } from "./pages/FrameworkSelectPage";
+import { ModelBackendPage } from "./pages/ModelBackendPage";
 
 function Placeholder({ name }: { name: string }) {
   return (
@@ -31,6 +33,10 @@ export function App() {
       return <ChatPage />;
     case "settings":
       return <SettingsPage />;
+    case "v2-framework-select":
+      return <FrameworkSelectPage />;
+    case "v2-model-backend":
+      return <ModelBackendPage />;
     default:
       return <Placeholder name="Unknown View" />;
   }

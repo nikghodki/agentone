@@ -87,10 +87,13 @@ export interface GenerationResult {
   messageId: string;
 }
 
+import type { FrameworkMeta } from "./v2-types";
+
 export interface ElectronAPI {
   getAppPaths: () => Promise<AppPaths>;
   getHardwareInfo: () => Promise<HardwareInfo>;
   getModelChoice: () => Promise<ModelChoice>;
+  getFrameworks: () => Promise<FrameworkMeta[]>;
 
   ollamaStatus: () => Promise<"not_installed" | "downloading_model" | "starting" | "ready" | "error">;
   ollamaStartAndPull: () => Promise<void>;

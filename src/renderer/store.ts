@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { Persona, Conversation } from "@shared/types";
+import type { ModelBackendKind, ModelProtocol } from "@shared/v2-types";
 
 export type AppView =
   | "setup"
@@ -8,11 +9,21 @@ export type AppView =
   | "dashboard"
   | "guided-task"
   | "chat"
-  | "settings";
+  | "settings"
+  | "v2-framework-select"
+  | "v2-model-backend";
 
 interface GuidedTaskContext {
   personaId: string;
   taskId: string;
+}
+
+interface ModelBackendDraft {
+  kind: ModelBackendKind;
+  provider: string | null;
+  baseUrl: string | null;
+  protocol: ModelProtocol;
+  model: string;
 }
 
 interface AppState {
@@ -29,6 +40,10 @@ interface AppState {
   isGenerating: boolean;
   streamingText: string;
 
+  // v2 onboarding state
+  selectedFrameworkId: string;
+  modelBackendDraft: ModelBackendDraft;
+
   setView: (view: AppView) => void;
   selectPersona: (id: string) => void;
   setPriorities: (priorities: string[]) => void;
@@ -42,6 +57,10 @@ interface AppState {
   appendStreamingText: (token: string) => void;
   clearStreamingText: () => void;
   setConversations: (convs: Conversation[]) => void;
+
+  // v2 onboarding actions
+  setFramework: (id: string) => void;
+  setModelBackendDraft: (partial: Partial<ModelBackendDraft>) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -58,6 +77,16 @@ export const useAppStore = create<AppState>((set) => ({
   isGenerating: false,
   streamingText: "",
 
+  // v2 onboarding initial state
+  selectedFrameworkId: "openclaw",
+  modelBackendDraft: {
+    kind: "ollama",
+    provider: null,
+    baseUrl: null,
+    protocol: "v1/chat/completions",
+    model: "",
+  },
+
   setView: (view) => set({ view }),
   selectPersona: (id) => set({ selectedPersonaId: id }),
   setPriorities: (priorities) => set({ selectedPriorities: priorities }),
@@ -72,4 +101,9 @@ export const useAppStore = create<AppState>((set) => ({
   appendStreamingText: (token) => set((s) => ({ streamingText: s.streamingText + token })),
   clearStreamingText: () => set({ streamingText: "" }),
   setConversations: (convs) => set({ conversations: convs }),
+
+  // v2 onboarding actions
+  setFramework: (id) => set({ selectedFrameworkId: id }),
+  setModelBackendDraft: (partial) =>
+    set((s) => ({ modelBackendDraft: { ...s.modelBackendDraft, ...partial } })),
 }));

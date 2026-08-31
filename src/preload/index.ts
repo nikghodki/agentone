@@ -5,6 +5,7 @@ const api: ElectronAPI = {
   getAppPaths: () => ipcRenderer.invoke("get-app-paths"),
   getHardwareInfo: () => ipcRenderer.invoke("get-hardware-info"),
   getModelChoice: () => ipcRenderer.invoke("get-model-choice"),
+  getFrameworks: () => ipcRenderer.invoke("get-frameworks"),
 
   ollamaStatus: () => ipcRenderer.invoke("ollama-status"),
   ollamaStartAndPull: () => ipcRenderer.invoke("ollama-start-and-pull"),
