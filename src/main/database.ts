@@ -14,7 +14,7 @@ export class Database {
   initialize(): void {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS user_profile (
-        id INTEGER PRIMARY KEY DEFAULT 1,
+        id INTEGER PRIMARY KEY DEFAULT 1 CHECK(id = 1),
         persona TEXT NOT NULL,
         priorities TEXT NOT NULL DEFAULT '[]',
         created_at TEXT DEFAULT (datetime('now')),
@@ -37,6 +37,8 @@ export class Database {
         content TEXT NOT NULL,
         created_at TEXT DEFAULT (datetime('now'))
       );
+
+      CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
 
       CREATE TABLE IF NOT EXISTS task_usage (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,9 +64,16 @@ export class Database {
   getProfile(): UserProfile | null {
     const row = this.db.prepare("SELECT * FROM user_profile WHERE id = 1").get() as any;
     if (!row) return null;
+    let priorities: string[] = [];
+    try {
+      priorities = JSON.parse(row.priorities);
+    } catch {
+      // Fall back to empty priorities if JSON is corrupted
+      priorities = [];
+    }
     return {
       persona: row.persona,
-      priorities: JSON.parse(row.priorities),
+      priorities,
       licenseKey: row.license_key,
       licenseValidUntil: row.license_valid_until,
     };
@@ -91,6 +100,7 @@ export class Database {
 
   getConversations(limit: number): Conversation[] {
     return this.db
+      // rowid DESC as tiebreaker: insertion order is stable for never-VACUUMed local DB, resolves same-timestamp collisions
       .prepare("SELECT * FROM conversations ORDER BY updated_at DESC, rowid DESC LIMIT ?")
       .all(limit)
       .map((row: any) => ({
