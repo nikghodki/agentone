@@ -2,6 +2,7 @@ import { ipcMain, BrowserWindow } from "electron";
 import { randomUUID } from "crypto";
 import { Database } from "./database";
 import { OllamaManager } from "./ollama-manager";
+import { LlamaCppManager } from "./llamacpp-manager";
 import { RateLimiter } from "./rate-limiter";
 import { detectHardware, selectModel } from "./hardware-detector";
 import { getAppPaths } from "./paths";
@@ -12,9 +13,10 @@ import { OpenclawAdapter } from "./frameworks/openclaw-adapter";
 import { CapabilityOrchestrator } from "./capability-orchestrator";
 import { Secrets } from "./secrets";
 import type { ModelChoice, UserProfile, TaskUsage } from "../shared/types";
-import type { FrameworkAdapter, Deployment } from "../shared/v2-types";
+import type { FrameworkAdapter, Deployment, ModelBackendConfig } from "../shared/v2-types";
 
 let ollamaManager: OllamaManager | null = null;
+let llamaCppManager: LlamaCppManager | null = null;
 let selectedModel: ModelChoice | null = null;
 let ollamaState: "not_installed" | "downloading_model" | "starting" | "ready" | "error" = "not_installed";
 
@@ -46,6 +48,49 @@ export function createAdapter(frameworkId: string, secrets: Secrets): FrameworkA
     `Framework "${frameworkId}" is not yet supported. ` +
     `Only "zeptoclaw", "hermes", and "openclaw" are currently wired for deployment.`
   );
+}
+
+/**
+ * Returns the install directory for llama.cpp binaries.
+ */
+export function getLlamaCppInstallDir(): string {
+  const paths = getAppPaths();
+  return require("path").join(paths.userData, "llamacpp");
+}
+
+/**
+ * Factory function to create a LlamaCppManager instance.
+ */
+export function createLlamaCppManager(installDir: string): LlamaCppManager {
+  return new LlamaCppManager(installDir);
+}
+
+/**
+ * Starts llama.cpp for a backend: installs, downloads model, starts server,
+ * and returns the backend config with the live loopback baseUrl.
+ */
+export async function startLlamaCppForBackend(
+  backend: ModelBackendConfig,
+  mgr: LlamaCppManager,
+  onProgress: (pct: number) => void
+): Promise<ModelBackendConfig> {
+  await mgr.ensureInstalled(onProgress);
+  const modelPath = await mgr.ensureModel(
+    {
+      url: (backend.extra?.modelUrl as string) || undefined,
+      localPath: (backend.extra?.modelPath as string) || undefined,
+    },
+    onProgress
+  );
+  await mgr.start(modelPath);
+  return { ...backend, baseUrl: mgr.getBaseUrl() };
+}
+
+/**
+ * Test seam: allows tests to inject a fake llamaCppManager.
+ */
+export function __setLlamaCppManagerForTest(mgr: LlamaCppManager | null) {
+  llamaCppManager = mgr;
 }
 
 /**
@@ -191,7 +236,7 @@ export function registerIpcHandlers(db: Database, rateLimiter: RateLimiter, secr
       const adapter = createAdapter(frameworkId, secrets);
 
       // Resolve the model backend
-      const backend = db.getModelBackend(modelBackendId);
+      let backend = db.getModelBackend(modelBackendId);
       if (!backend) {
         throw new Error(`Model backend "${modelBackendId}" not found in database`);
       }
@@ -205,6 +250,19 @@ export function registerIpcHandlers(db: Database, rateLimiter: RateLimiter, secr
       });
 
       try {
+        // If using llama.cpp, start the managed server first
+        if (backend.kind === "llamacpp") {
+          llamaCppManager = createLlamaCppManager(getLlamaCppInstallDir());
+          const win = BrowserWindow.getAllWindows()[0];
+          backend = await startLlamaCppForBackend(
+            backend,
+            llamaCppManager,
+            (pct) => {
+              if (win) win.webContents.send("model-download-progress", pct);
+            }
+          );
+        }
+
         // Run install → configure → start
         await adapter.install();
         await adapter.configure(backend);
@@ -310,6 +368,7 @@ export function registerIpcHandlers(db: Database, rateLimiter: RateLimiter, secr
 
 export function shutdownServices() {
   ollamaManager?.stop();
+  llamaCppManager?.stop();
   for (const { adapter } of deploymentRegistry.values()) {
     adapter.stop().catch(() => {});
   }
