@@ -19,6 +19,7 @@ interface LlamaCppOptions {
   existsFn?: (p: string) => boolean;
   fsOps?: FsOps;
   execFileFn?: typeof execFile;
+  statSyncFn?: (p: string) => { size: number };
   port?: number;
 }
 
@@ -30,6 +31,7 @@ export class LlamaCppManager {
   private existsFn: (p: string) => boolean;
   private fsOps: FsOps;
   private execFileFn: typeof execFile;
+  private statSyncFn: (p: string) => { size: number };
   private process: ChildProcess | null = null;
 
   constructor(installDir: string, opts?: LlamaCppOptions) {
@@ -39,6 +41,7 @@ export class LlamaCppManager {
     this.spawnFn = opts?.spawnFn ?? spawn;
     this.existsFn = opts?.existsFn ?? fs.existsSync;
     this.execFileFn = opts?.execFileFn ?? execFile;
+    this.statSyncFn = opts?.statSyncFn ?? fs.statSync;
     this.fsOps = opts?.fsOps ?? {
       mkdir: fsPromises.mkdir,
       writeFile: fsPromises.writeFile,
@@ -108,8 +111,11 @@ export class LlamaCppManager {
     modelSpec: { url?: string; localPath?: string },
     onProgress: (pct: number) => void
   ): Promise<string> {
-    // If localPath is provided, return it directly
+    // If localPath is provided, verify it exists
     if (modelSpec.localPath) {
+      if (!this.existsFn(modelSpec.localPath)) {
+        throw new Error(`llama.cpp model file not found: ${modelSpec.localPath}`);
+      }
       return modelSpec.localPath;
     }
 
@@ -119,16 +125,46 @@ export class LlamaCppManager {
     const modelsDir = path.join(this.installDir, "models");
     const modelPath = path.join(modelsDir, modelFileName);
 
-    // Skip if already exists
+    // Check if file already exists - validate completeness
     if (this.existsFn(modelPath)) {
-      return modelPath;
+      // Verify file is complete by checking size against content-length
+      let shouldRedownload = false;
+      try {
+        const headResponse = await this.fetchFn(url, { method: "HEAD" } as any);
+        if (headResponse.ok) {
+          const contentLength = headResponse.headers.get("content-length");
+          if (contentLength) {
+            const expectedSize = parseInt(contentLength, 10);
+            const actualSize = this.statSyncFn(modelPath).size;
+            if (actualSize < expectedSize) {
+              // File is incomplete, delete and re-download
+              await this.fsOps.unlink(modelPath);
+              shouldRedownload = true;
+            }
+          }
+        }
+      } catch {
+        // HEAD request failed or no content-length - keep existing file
+      }
+
+      if (!shouldRedownload) {
+        return modelPath;
+      }
     }
 
     // Ensure models directory exists
     await this.fsOps.mkdir(modelsDir, { recursive: true });
 
     // Download the model
-    await this.downloadFile(url, modelPath, onProgress);
+    const expectedSize = await this.downloadFile(url, modelPath, onProgress);
+
+    // Verify download completeness if we got an expected size
+    if (expectedSize > 0) {
+      const actualSize = this.statSyncFn(modelPath).size;
+      if (actualSize < expectedSize) {
+        throw new Error(`Downloaded model is incomplete: expected ${expectedSize} bytes, got ${actualSize} bytes`);
+      }
+    }
 
     return modelPath;
   }
@@ -209,7 +245,7 @@ export class LlamaCppManager {
     url: string,
     destPath: string,
     onProgress: (pct: number) => void
-  ): Promise<void> {
+  ): Promise<number> {
     const response = await this.fetchFn(url);
     if (!response.ok) {
       throw new Error(`Failed to download ${url}: ${response.statusText}`);
@@ -254,5 +290,7 @@ export class LlamaCppManager {
     if (totalBytes > 0) {
       onProgress(100);
     }
+
+    return totalBytes;
   }
 }
