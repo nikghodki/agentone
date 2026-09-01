@@ -2,8 +2,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { promises as fs } from "fs";
 import * as path from "path";
 import * as os from "os";
+import { EventEmitter } from "stream";
 import { HermesAdapter } from "../../src/main/frameworks/hermes-adapter";
 import { ModelBackendConfig } from "../../src/shared/v2-types";
+import { ProcessManager } from "../../src/main/frameworks/process-manager";
+import { Secrets } from "../../src/main/secrets";
 
 describe("HermesAdapter", () => {
   let tempDir: string;
@@ -254,42 +257,343 @@ describe("HermesAdapter", () => {
     });
   });
 
-  describe("not-yet-implemented methods (Task 2-3)", () => {
-    it("start() throws not implemented", async () => {
-      const mockProbe = vi.fn().mockResolvedValue(true);
-      adapter = new HermesAdapter(tempDir, mockProbe);
+  // ========================================================================
+  // TASK 2: Lifecycle methods - start/stop/status/sendTask/streamOutput
+  // ========================================================================
 
-      await expect(adapter.start()).rejects.toThrow(/not implemented in this task/i);
+  describe("start()", () => {
+    it("spawns hermes chat with sandboxed explicit PATH (H1 guardrail)", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn(),
+        getLastError: vi.fn(),
+        getChild: vi.fn(),
+      } as unknown as ProcessManager;
+
+      // Configure with Ollama backend
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      adapter = new HermesAdapter(tempDir, mockProbe, mockProcessManager);
+      await adapter.configure(backend);
+      await adapter.start();
+
+      // Verify spawn was called with hermes chat
+      expect(mockProcessManager.start).toHaveBeenCalledOnce();
+      const [cmd, args, opts] = (mockProcessManager.start as any).mock.calls[0];
+      expect(cmd).toBe("hermes");
+      expect(args).toEqual(["chat"]);
+
+      // CRITICAL: Verify PATH is EXPLICIT and sandboxed (H1 guardrail)
+      expect(opts.env.PATH).toBeDefined();
+      // Should contain hermes's bundled node + standard bins
+      expect(opts.env.PATH).toContain(".hermes/node/bin");
+      expect(opts.env.PATH).toContain("/usr/bin");
+      // Should NOT equal process.env.PATH (sandboxed)
+      expect(opts.env.PATH).not.toBe(process.env.PATH);
+      // Should NOT contain ~/.local/bin (hermes's PATH hijack)
+      expect(opts.env.PATH).not.toContain("~/.local/bin");
     });
 
-    it("stop() throws not implemented", async () => {
+    it("injects API key from Secrets when backend has secretRef", async () => {
       const mockProbe = vi.fn().mockResolvedValue(true);
-      adapter = new HermesAdapter(tempDir, mockProbe);
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn(),
+        getLastError: vi.fn(),
+        getChild: vi.fn(),
+      } as unknown as ProcessManager;
 
-      await expect(adapter.stop()).rejects.toThrow(/not implemented in this task/i);
+      const mockSecrets = {
+        get: vi.fn().mockReturnValue("sk-test-anthropic-key"),
+      } as unknown as Secrets;
+
+      const backend: ModelBackendConfig = {
+        id: "anthropic-cloud",
+        kind: "cloud",
+        provider: "anthropic",
+        baseUrl: null,
+        protocol: "v1/messages",
+        model: "claude-3-5-sonnet-20241022",
+        secretRef: "anthropic-api-key",
+      };
+
+      adapter = new HermesAdapter(tempDir, mockProbe, mockProcessManager, mockSecrets);
+      await adapter.configure(backend);
+      await adapter.start();
+
+      // Verify API key was injected via env
+      const [, , opts] = (mockProcessManager.start as any).mock.calls[0];
+      expect(mockSecrets.get).toHaveBeenCalledWith("anthropic-api-key");
+      expect(opts.env.ANTHROPIC_API_KEY).toBe("sk-test-anthropic-key");
+    });
+  });
+
+  describe("stop()", () => {
+    it("calls ProcessManager.stop()", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn(),
+        getLastError: vi.fn(),
+        getChild: vi.fn(),
+      } as unknown as ProcessManager;
+
+      adapter = new HermesAdapter(tempDir, mockProbe, mockProcessManager);
+      await adapter.stop();
+
+      expect(mockProcessManager.stop).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("status()", () => {
+    it("returns unhealthy when process is not running", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn().mockReturnValue(false),
+        getLastError: vi.fn().mockReturnValue(null),
+        getChild: vi.fn(),
+      } as unknown as ProcessManager;
+
+      adapter = new HermesAdapter(tempDir, mockProbe, mockProcessManager);
+      const status = await adapter.status();
+
+      expect(status).toBe("unhealthy: process not running");
+      expect(mockProcessManager.isRunning).toHaveBeenCalledOnce();
     });
 
-    it("status() throws not implemented", async () => {
+    it("returns unhealthy with error message when process failed to start", async () => {
       const mockProbe = vi.fn().mockResolvedValue(true);
-      adapter = new HermesAdapter(tempDir, mockProbe);
+      const mockError = new Error("ENOENT: hermes not found");
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn().mockReturnValue(false),
+        getLastError: vi.fn().mockReturnValue(mockError),
+        getChild: vi.fn(),
+      } as unknown as ProcessManager;
 
-      await expect(adapter.status()).rejects.toThrow(/not implemented in this task/i);
+      adapter = new HermesAdapter(tempDir, mockProbe, mockProcessManager);
+      const status = await adapter.status();
+
+      expect(status).toBe("unhealthy: process not running (ENOENT: hermes not found)");
     });
 
-    it("sendTask() throws not implemented", async () => {
+    it("returns healthy when process is running and version check succeeds", async () => {
       const mockProbe = vi.fn().mockResolvedValue(true);
-      adapter = new HermesAdapter(tempDir, mockProbe);
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn().mockReturnValue(true),
+        getLastError: vi.fn(),
+        getChild: vi.fn(),
+      } as unknown as ProcessManager;
 
-      await expect(adapter.sendTask("test")).rejects.toThrow(/not implemented in this task/i);
+      const mockExec = vi.fn().mockResolvedValue({
+        stdout: "Hermes Agent v0.21.0 (2026.8.31) · upstream 8dbf07e9",
+        stderr: "",
+      });
+
+      adapter = new HermesAdapter(tempDir, mockProbe, mockProcessManager, null, mockExec);
+      const status = await adapter.status();
+
+      expect(status).toBe("healthy");
+      expect(mockExec).toHaveBeenCalledWith("hermes --version");
     });
 
-    it("streamOutput() throws not implemented", () => {
+    it("returns unhealthy when version check fails", async () => {
       const mockProbe = vi.fn().mockResolvedValue(true);
-      adapter = new HermesAdapter(tempDir, mockProbe);
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn().mockReturnValue(true),
+        getLastError: vi.fn(),
+        getChild: vi.fn(),
+      } as unknown as ProcessManager;
 
-      expect(() => adapter.streamOutput(() => {})).toThrow(/not implemented in this task/i);
+      const mockExec = vi.fn().mockRejectedValue(new Error("command not found"));
+
+      adapter = new HermesAdapter(tempDir, mockProbe, mockProcessManager, null, mockExec);
+      const status = await adapter.status();
+
+      expect(status).toContain("unhealthy: command not found");
+    });
+  });
+
+  describe("sendTask()", () => {
+    it("writes task to stdin when process is running", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const mockStdin = {
+        write: vi.fn(),
+      };
+      const mockChild = {
+        stdin: mockStdin,
+        stdout: new EventEmitter(),
+      };
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn(),
+        getLastError: vi.fn(),
+        getChild: vi.fn().mockReturnValue(mockChild),
+      } as unknown as ProcessManager;
+
+      adapter = new HermesAdapter(tempDir, mockProbe, mockProcessManager);
+      await adapter.sendTask("What is 2+2?");
+
+      expect(mockStdin.write).toHaveBeenCalledWith("What is 2+2?\n");
     });
 
+    it("throws when process is not running", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn(),
+        getLastError: vi.fn(),
+        getChild: vi.fn().mockReturnValue(null),
+      } as unknown as ProcessManager;
+
+      adapter = new HermesAdapter(tempDir, mockProbe, mockProcessManager);
+
+      await expect(adapter.sendTask("test")).rejects.toThrow(/Process not running/i);
+    });
+  });
+
+  describe("streamOutput()", () => {
+    it("emits tokens from stdout and __TASK_DONE__ at end", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const mockStdout = new EventEmitter();
+      const mockChild = {
+        stdin: { write: vi.fn() },
+        stdout: mockStdout,
+      };
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn(),
+        getLastError: vi.fn(),
+        getChild: vi.fn().mockReturnValue(mockChild),
+      } as unknown as ProcessManager;
+
+      adapter = new HermesAdapter(tempDir, mockProbe, mockProcessManager);
+
+      const emitted: string[] = [];
+      const unsubscribe = adapter.streamOutput((chunk) => emitted.push(chunk));
+
+      // Emit data chunks
+      mockStdout.emit("data", Buffer.from("The answer is "));
+      mockStdout.emit("data", Buffer.from("4.\n"));
+      mockStdout.emit("end");
+
+      expect(emitted).toEqual(["The answer is 4.", "__TASK_DONE__"]);
+
+      unsubscribe();
+    });
+
+    it("handles tokens split across chunks (line buffering)", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const mockStdout = new EventEmitter();
+      const mockChild = {
+        stdin: { write: vi.fn() },
+        stdout: mockStdout,
+      };
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn(),
+        getLastError: vi.fn(),
+        getChild: vi.fn().mockReturnValue(mockChild),
+      } as unknown as ProcessManager;
+
+      adapter = new HermesAdapter(tempDir, mockProbe, mockProcessManager);
+
+      const emitted: string[] = [];
+      adapter.streamOutput((chunk) => emitted.push(chunk));
+
+      // Emit token split across multiple chunks (cross-chunk boundary)
+      mockStdout.emit("data", Buffer.from("First line\nSecond li"));
+      mockStdout.emit("data", Buffer.from("ne split\nThird line"));
+      mockStdout.emit("data", Buffer.from("\n"));
+      mockStdout.emit("end");
+
+      // Verify: no dropped tokens, split token reassembled correctly
+      expect(emitted).toEqual([
+        "First line",
+        "Second line split",
+        "Third line",
+        "__TASK_DONE__",
+      ]);
+    });
+
+    it("filters spinner lines with ANCHORED match only", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const mockStdout = new EventEmitter();
+      const mockChild = {
+        stdin: { write: vi.fn() },
+        stdout: mockStdout,
+      };
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn(),
+        getLastError: vi.fn(),
+        getChild: vi.fn().mockReturnValue(mockChild),
+      } as unknown as ProcessManager;
+
+      adapter = new HermesAdapter(tempDir, mockProbe, mockProcessManager);
+
+      const emitted: string[] = [];
+      adapter.streamOutput((chunk) => emitted.push(chunk));
+
+      // Emit spinner line (should be filtered) + real content
+      mockStdout.emit("data", Buffer.from("  ⠋ Thinking...\n"));
+      mockStdout.emit("data", Buffer.from("Real answer here\n"));
+      mockStdout.emit("data", Buffer.from("More content with ⠋ in middle\n"));
+      mockStdout.emit("end");
+
+      // Verify: spinner line filtered, but line with spinner in middle kept
+      expect(emitted).toEqual([
+        "Real answer here",
+        "More content with ⠋ in middle",
+        "__TASK_DONE__",
+      ]);
+    });
+
+    it("throws when process is not running", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn(),
+        getLastError: vi.fn(),
+        getChild: vi.fn().mockReturnValue(null),
+      } as unknown as ProcessManager;
+
+      adapter = new HermesAdapter(tempDir, mockProbe, mockProcessManager);
+
+      expect(() => adapter.streamOutput(() => {})).toThrow(/Process not running/i);
+    });
+  });
+
+  // ========================================================================
+  // NOT IMPLEMENTED IN TASK 2 - Task 4 will implement capability methods
+  // ========================================================================
+
+  describe("not-yet-implemented methods (Task 4)", () => {
     it("listCapabilities() throws not implemented", async () => {
       const mockProbe = vi.fn().mockResolvedValue(true);
       adapter = new HermesAdapter(tempDir, mockProbe);
