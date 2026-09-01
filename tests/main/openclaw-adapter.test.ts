@@ -316,8 +316,124 @@ describe("OpenclawAdapter", () => {
   // ========================================================================
 
   describe("start()", () => {
-    it("spawns openclaw agent --local via ProcessManager with Node-22 sandbox", async () => {
-      // Mock ProcessManager
+    it("performs lightweight readiness check (verifies binary)", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "openclaw version 2026.8.1\n",
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(
+        tempDir,
+        undefined,
+        mockExecWithArgs
+      );
+
+      await adapter.start();
+
+      // Verify version check was called (readiness check)
+      expect(mockExecWithArgs).toHaveBeenCalledWith(
+        expect.stringContaining("openclaw"),
+        ["--version"]
+      );
+    });
+
+    it("throws when binary is not ready", async () => {
+      const mockExecWithArgs = vi.fn().mockRejectedValue(new Error("ENOENT"));
+
+      adapter = new OpenclawAdapter(
+        tempDir,
+        undefined,
+        mockExecWithArgs
+      );
+
+      await expect(adapter.start()).rejects.toThrow(/not ready/i);
+    });
+  });
+
+  describe("stop()", () => {
+    it("stops the process via ProcessManager", async () => {
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn().mockResolvedValue(undefined),
+        isRunning: vi.fn().mockReturnValue(true),
+        getLastError: vi.fn().mockReturnValue(null),
+        getChild: vi.fn().mockReturnValue(null),
+      };
+
+      adapter = new OpenclawAdapter(
+        tempDir,
+        undefined,
+        undefined,
+        mockProcessManager as any
+      );
+
+      await adapter.stop();
+
+      expect(mockProcessManager.stop).toHaveBeenCalled();
+    });
+  });
+
+  describe("status()", () => {
+    it("returns healthy when binary is ready (version check passes)", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "openclaw version 2026.8.1\n",
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(
+        tempDir,
+        undefined,
+        mockExecWithArgs
+      );
+
+      const status = await adapter.status();
+
+      expect(status).toBe("healthy");
+      expect(mockExecWithArgs).toHaveBeenCalledWith(
+        expect.stringContaining("openclaw"),
+        ["--version"]
+      );
+    });
+
+    it("returns unhealthy when binary is not accessible", async () => {
+      const mockExecWithArgs = vi.fn().mockRejectedValue(new Error("ENOENT"));
+
+      adapter = new OpenclawAdapter(
+        tempDir,
+        undefined,
+        mockExecWithArgs
+      );
+
+      const status = await adapter.status();
+
+      expect(status).toContain("unhealthy");
+      expect(status).toContain("ENOENT");
+    });
+
+    it("uses absolute binary path (not host PATH lookup)", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "openclaw version 2026.8.1\n",
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(
+        tempDir,
+        undefined,
+        mockExecWithArgs
+      );
+
+      await adapter.status();
+
+      // Verify it used an absolute path (contains full path)
+      const call = mockExecWithArgs.mock.calls[0];
+      const binary = call[0];
+      expect(binary).toContain("/");
+      expect(binary).toContain("openclaw");
+    });
+  });
+
+  describe("sendTask()", () => {
+    it("spawns one-shot process with --message flag (verified model)", async () => {
       const mockProcessManager = {
         start: vi.fn(),
         stop: vi.fn(),
@@ -345,11 +461,12 @@ describe("OpenclawAdapter", () => {
       };
       await adapter.configure(backend);
 
-      await adapter.start();
+      await adapter.sendTask("What is 2+2?");
 
+      // Verify one-shot spawn with --message flag
       expect(mockProcessManager.start).toHaveBeenCalledWith(
         expect.stringContaining("openclaw"),
-        ["agent", "--local"],
+        ["agent", "--local", "--message", "What is 2+2?"],
         expect.objectContaining({
           env: expect.objectContaining({
             HOME: expect.any(String),
@@ -358,11 +475,10 @@ describe("OpenclawAdapter", () => {
         })
       );
 
-      // Verify PATH excludes ~/.local/bin
+      // Verify PATH excludes ~/.local/bin (Node-22 sandbox)
       const call = mockProcessManager.start.mock.calls[0];
       const env = call[2].env;
       expect(env.PATH).not.toContain(".local/bin");
-      // Verify PATH includes Node 22 + standard bins
       expect(env.PATH).toContain("/usr/bin");
     });
 
@@ -398,7 +514,7 @@ describe("OpenclawAdapter", () => {
       };
       await adapter.configure(backend);
 
-      await adapter.start();
+      await adapter.sendTask("test task");
 
       // Verify API key was injected into env
       const call = mockProcessManager.start.mock.calls[0];
@@ -406,56 +522,8 @@ describe("OpenclawAdapter", () => {
       expect(env.ANTHROPIC_API_KEY).toBe("test-api-key-123");
       expect(mockSecrets.get).toHaveBeenCalledWith("anthropic-key");
     });
-  });
 
-  describe("stop()", () => {
-    it("stops the process via ProcessManager", async () => {
-      const mockProcessManager = {
-        start: vi.fn(),
-        stop: vi.fn().mockResolvedValue(undefined),
-        isRunning: vi.fn().mockReturnValue(true),
-        getLastError: vi.fn().mockReturnValue(null),
-        getChild: vi.fn().mockReturnValue(null),
-      };
-
-      adapter = new OpenclawAdapter(
-        tempDir,
-        undefined,
-        undefined,
-        mockProcessManager as any
-      );
-
-      await adapter.stop();
-
-      expect(mockProcessManager.stop).toHaveBeenCalled();
-    });
-  });
-
-  describe("status()", () => {
-    it("returns unhealthy when process is not running", async () => {
-      const mockProcessManager = {
-        start: vi.fn(),
-        stop: vi.fn(),
-        isRunning: vi.fn().mockReturnValue(false),
-        getLastError: vi.fn().mockReturnValue(new Error("spawn ENOENT")),
-        getChild: vi.fn().mockReturnValue(null),
-      };
-
-      adapter = new OpenclawAdapter(
-        tempDir,
-        undefined,
-        undefined,
-        mockProcessManager as any
-      );
-
-      const status = await adapter.status();
-
-      expect(status).toContain("unhealthy");
-      expect(status).toContain("not running");
-      expect(mockProcessManager.isRunning).toHaveBeenCalled();
-    });
-
-    it("returns healthy when process is running and version check passes", async () => {
+    it("passes input as single argv (injection-safe)", async () => {
       const mockProcessManager = {
         start: vi.fn(),
         stop: vi.fn(),
@@ -464,76 +532,6 @@ describe("OpenclawAdapter", () => {
         getChild: vi.fn().mockReturnValue(null),
       };
 
-      const mockExecWithArgs = vi.fn().mockResolvedValue({
-        stdout: "openclaw version 2026.8.1\n",
-        stderr: "",
-      });
-
-      adapter = new OpenclawAdapter(
-        tempDir,
-        undefined,
-        mockExecWithArgs,
-        mockProcessManager as any
-      );
-
-      const status = await adapter.status();
-
-      expect(status).toBe("healthy");
-      expect(mockExecWithArgs).toHaveBeenCalledWith(
-        expect.stringContaining("openclaw"),
-        ["--version"]
-      );
-    });
-
-    it("uses absolute binary path (not host PATH lookup)", async () => {
-      const mockProcessManager = {
-        start: vi.fn(),
-        stop: vi.fn(),
-        isRunning: vi.fn().mockReturnValue(true),
-        getLastError: vi.fn().mockReturnValue(null),
-        getChild: vi.fn().mockReturnValue(null),
-      };
-
-      const mockExecWithArgs = vi.fn().mockResolvedValue({
-        stdout: "openclaw version 2026.8.1\n",
-        stderr: "",
-      });
-
-      adapter = new OpenclawAdapter(
-        tempDir,
-        undefined,
-        mockExecWithArgs,
-        mockProcessManager as any
-      );
-
-      await adapter.status();
-
-      // Verify it used an absolute path (contains full path)
-      const call = mockExecWithArgs.mock.calls[0];
-      const binary = call[0];
-      expect(binary).toContain("/");
-      expect(binary).toContain("openclaw");
-    });
-  });
-
-  describe("sendTask()", () => {
-    it("writes input to stdin with newline", async () => {
-      const mockStdin = {
-        write: vi.fn(),
-      };
-
-      const mockChild = {
-        stdin: mockStdin,
-      };
-
-      const mockProcessManager = {
-        start: vi.fn(),
-        stop: vi.fn(),
-        isRunning: vi.fn().mockReturnValue(true),
-        getLastError: vi.fn().mockReturnValue(null),
-        getChild: vi.fn().mockReturnValue(mockChild),
-      };
-
       adapter = new OpenclawAdapter(
         tempDir,
         undefined,
@@ -541,28 +539,25 @@ describe("OpenclawAdapter", () => {
         mockProcessManager as any
       );
 
-      await adapter.sendTask("What is 2+2?");
-
-      expect(mockStdin.write).toHaveBeenCalledWith("What is 2+2?\n");
-    });
-
-    it("throws when process not running", async () => {
-      const mockProcessManager = {
-        start: vi.fn(),
-        stop: vi.fn(),
-        isRunning: vi.fn().mockReturnValue(false),
-        getLastError: vi.fn().mockReturnValue(null),
-        getChild: vi.fn().mockReturnValue(null),
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
       };
+      await adapter.configure(backend);
 
-      adapter = new OpenclawAdapter(
-        tempDir,
-        undefined,
-        undefined,
-        mockProcessManager as any
-      );
+      // Input with shell metacharacters
+      const maliciousInput = 'test"; rm -rf /; echo "pwned';
+      await adapter.sendTask(maliciousInput);
 
-      await expect(adapter.sendTask("test")).rejects.toThrow(/not running/i);
+      // Verify input is passed as single argv (not shell-interpolated)
+      const call = mockProcessManager.start.mock.calls[0];
+      const args = call[1];
+      expect(args[3]).toBe(maliciousInput); // Exact match, not executed
     });
   });
 
@@ -667,7 +662,7 @@ describe("OpenclawAdapter", () => {
       onEnd();
     });
 
-    it("emits __TASK_DONE__ when stopReason=stop line is detected", () => {
+    it("emits __TASK_DONE__ exactly once when stopReason line is detected", () => {
       const mockStdout = {
         on: vi.fn(),
         once: vi.fn(),
@@ -700,13 +695,55 @@ describe("OpenclawAdapter", () => {
 
       const onData = mockStdout.on.mock.calls.find((call: any) => call[0] === "data")?.[1];
 
-      // Emit various stopReason signals
+      // Emit a stopReason signal (single task completion)
       onData(Buffer.from("[agents/agent-command] [agent] run abc123 ended with stopReason=stop\n"));
-      onData(Buffer.from("[agents/agent-command] [agent] run def456 ended with stopReason=end_turn\n"));
-      onData(Buffer.from("[agents/agent-command] [agent] run ghi789 ended with stopReason=max_tokens\n"));
 
-      // Verify __TASK_DONE__ was emitted for each stopReason
-      expect(emittedChunks.filter(c => c === "__TASK_DONE__")).toHaveLength(3);
+      // Verify __TASK_DONE__ was emitted exactly once
+      expect(emittedChunks.filter(c => c === "__TASK_DONE__")).toHaveLength(1);
+    });
+
+    it("uses anchored stopReason detection (not fooled by model output)", () => {
+      const mockStdout = {
+        on: vi.fn(),
+        once: vi.fn(),
+        off: vi.fn(),
+      };
+
+      const mockChild = {
+        stdout: mockStdout,
+      };
+
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn().mockReturnValue(true),
+        getLastError: vi.fn().mockReturnValue(null),
+        getChild: vi.fn().mockReturnValue(mockChild),
+      };
+
+      adapter = new OpenclawAdapter(
+        tempDir,
+        undefined,
+        undefined,
+        mockProcessManager as any
+      );
+
+      const emittedChunks: string[] = [];
+      adapter.streamOutput((chunk) => {
+        emittedChunks.push(chunk);
+      });
+
+      const onData = mockStdout.on.mock.calls.find((call: any) => call[0] === "data")?.[1];
+
+      // Emit model output that contains "ended with stopReason=" (should NOT trigger)
+      onData(Buffer.from("The task ended with stopReason=stop being detected.\n"));
+
+      // Emit actual openclaw stopReason line (SHOULD trigger)
+      onData(Buffer.from("[agents/agent-command] [agent] run abc123 ended with stopReason=stop\n"));
+
+      // Verify: model output emitted, __TASK_DONE__ emitted once
+      expect(emittedChunks).toContain("The task ended with stopReason=stop being detected.");
+      expect(emittedChunks.filter(c => c === "__TASK_DONE__")).toHaveLength(1);
     });
 
     it("returns unsubscribe function that removes listeners", () => {

@@ -340,15 +340,71 @@ export class OpenclawAdapter implements FrameworkAdapter {
   // ========================================================================
 
   /**
-   * Start openclaw agent process via ProcessManager.
-   * Uses sandboxed env with API key injected from Secrets.
+   * Start openclaw adapter (lightweight readiness check).
    *
-   * Per verified doc: `openclaw agent --local` (local mode, no gateway)
+   * VERIFIED MODEL: openclaw runs one-shot per task via `--message` flag, NOT as
+   * a persistent stdin-driven process. start() verifies the binary and config are
+   * usable, but does NOT spawn a long-lived process.
    *
-   * CRITICAL GUARDRAIL (O1): Explicit sandboxed PATH with Node-22, never inherit host PATH.
-   * Uses Node-22 from the spike directory's nvm installation.
+   * Per verified doc: `openclaw agent --local --message "<prompt>"` (one-shot spawn)
    */
   async start(): Promise<void> {
+    // Lightweight readiness check: verify binary exists and config is valid
+    const openclawBinary = this.getOpenclawBinary();
+
+    try {
+      // Check binary is accessible
+      const result = await this.execWithArgsFn(openclawBinary, ["--version"]);
+      if (!result.stdout.includes("openclaw")) {
+        throw new Error("Unexpected version output");
+      }
+    } catch (error) {
+      throw new Error(
+        `openclaw binary not ready: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+
+    // TODO: could also validate config with `openclaw config validate` here
+  }
+
+  /**
+   * Stop any in-flight task process.
+   */
+  async stop(): Promise<void> {
+    await this.processManager.stop();
+  }
+
+  /**
+   * Check if openclaw is ready to run tasks.
+   * Per verified doc: `openclaw --version` returns "openclaw version 2026.8.1..."
+   *
+   * Status reflects "ready to run tasks" rather than a long-lived process.
+   * Uses absolute path to openclaw binary for consistency.
+   */
+  async status(): Promise<string> {
+    try {
+      const openclawBinary = this.getOpenclawBinary();
+      const result = await this.execWithArgsFn(openclawBinary, ["--version"]);
+      if (result.stdout.includes("openclaw")) {
+        return "healthy";
+      }
+      return "unhealthy: unexpected version output";
+    } catch (error) {
+      return `unhealthy: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
+  /**
+   * Send a task/prompt to openclaw via one-shot `--message` spawn.
+   *
+   * VERIFIED MODEL (from spike): spawn FRESH one-shot process per task:
+   * `openclaw agent --local --message "<input>"`
+   *
+   * Uses arg-array (injection-safe - input as single argv, NOT shell-interpolated).
+   * Uses Node-22 sandboxed env (explicit PATH excludes ~/.local/bin).
+   * Stores child so streamOutput can attach to its stdout.
+   */
+  async sendTask(input: string): Promise<void> {
     // Build sandboxed env with EXPLICIT PATH (no host PATH inheritance)
     const env = this.buildSandboxedEnv();
 
@@ -365,71 +421,24 @@ export class OpenclawAdapter implements FrameworkAdapter {
     // Use absolute path to openclaw binary
     const openclawBinary = this.getOpenclawBinary();
 
-    // Spawn openclaw agent --local (local mode for stdin/stdout streaming)
-    this.processManager.start(openclawBinary, ["agent", "--local"], { env });
+    // Spawn one-shot process with --message flag (arg-array, injection-safe)
+    // input is passed as a single argv element, so shell metacharacters are safe
+    this.processManager.start(openclawBinary, ["agent", "--local", "--message", input], { env });
   }
 
   /**
-   * Stop the openclaw agent process.
-   */
-  async stop(): Promise<void> {
-    await this.processManager.stop();
-  }
-
-  /**
-   * Check if openclaw is healthy via version check AND process liveness.
-   * Per verified doc: `openclaw --version` returns "openclaw version 2026.8.1..."
-   *
-   * IMPORTANT: Also checks that the spawned process is actually running.
-   * A dead/failed start() should report unhealthy even if the binary exists.
-   * Uses absolute path to openclaw binary for consistency with start().
-   */
-  async status(): Promise<string> {
-    // First check process liveness
-    if (!this.processManager.isRunning()) {
-      const lastError = this.processManager.getLastError();
-      if (lastError) {
-        return `unhealthy: process not running (${lastError.message})`;
-      }
-      return "unhealthy: process not running";
-    }
-
-    // Then check binary availability using absolute path
-    try {
-      const openclawBinary = this.getOpenclawBinary();
-      const result = await this.execWithArgsFn(openclawBinary, ["--version"]);
-      if (result.stdout.includes("openclaw")) {
-        return "healthy";
-      }
-      return "unhealthy: unexpected version output";
-    } catch (error) {
-      return `unhealthy: ${error instanceof Error ? error.message : String(error)}`;
-    }
-  }
-
-  /**
-   * Send a task/prompt to the running openclaw agent via stdin.
-   * Note: openclaw agent --local doesn't use stdin for prompts; it uses --message flag.
-   * This method writes to stdin but openclaw may not respond. Instead, use the --message
-   * approach in the orchestrator (spawn a new process per task).
-   */
-  async sendTask(input: string): Promise<void> {
-    const child = this.processManager.getChild();
-    if (!child || !child.stdin) {
-      throw new Error("Process not running or stdin not available");
-    }
-
-    child.stdin.write(`${input}\n`);
-  }
-
-  /**
-   * Stream output from the running openclaw agent.
+   * Stream output from the current task process (spawned by sendTask).
    * Parses stdout with line buffering to handle tokens split across chunks.
    * Translates openclaw's completion signal into __TASK_DONE__.
    *
    * Per verified doc: completion is signaled by a line matching:
    * "[agents/agent-command] [agent] run <uuid> ended with stopReason=stop"
    * (or other terminal stopReasons: end_turn, max_tokens, etc.)
+   *
+   * ANCHORED stopReason detection: only matches the actual openclaw log line,
+   * not model output that happens to contain that phrase.
+   *
+   * Emits __TASK_DONE__ exactly once per task (when stopReason line appears).
    *
    * Filters out log/spinner noise with ANCHORED match.
    *
@@ -442,6 +451,7 @@ export class OpenclawAdapter implements FrameworkAdapter {
     }
 
     let buffer = "";
+    let taskDoneEmitted = false; // Ensure __TASK_DONE__ emitted exactly once
     const decoder = new TextDecoder();
 
     const onData = (chunk: Buffer) => {
@@ -459,9 +469,13 @@ export class OpenclawAdapter implements FrameworkAdapter {
         if (!line.trim()) continue;
 
         // Check if this is a completion signal (stopReason line)
+        // ANCHORED: only match the actual openclaw log line structure
         if (this.isStopReasonLine(line)) {
-          // Emit __TASK_DONE__ and don't emit the line itself
-          cb("__TASK_DONE__");
+          // Emit __TASK_DONE__ exactly once and don't emit the line itself
+          if (!taskDoneEmitted) {
+            cb("__TASK_DONE__");
+            taskDoneEmitted = true;
+          }
           continue;
         }
 
@@ -477,6 +491,10 @@ export class OpenclawAdapter implements FrameworkAdapter {
       // Flush remaining buffer
       if (buffer.trim() && !this.isLogLine(buffer) && !this.isStopReasonLine(buffer)) {
         cb(buffer);
+      }
+      // Ensure __TASK_DONE__ is emitted even if stopReason line was missed
+      if (!taskDoneEmitted) {
+        cb("__TASK_DONE__");
       }
     };
 
@@ -495,10 +513,16 @@ export class OpenclawAdapter implements FrameworkAdapter {
   /**
    * Check if a line is a stopReason completion signal.
    * Per verified doc: "[agents/agent-command] [agent] run <uuid> ended with stopReason=stop"
-   * Also matches other terminal stopReasons: end_turn, max_tokens, tool_use, etc.
+   *
+   * ANCHORED pattern: matches only the actual openclaw log line structure,
+   * not model output that happens to contain "ended with stopReason=".
+   *
+   * Pattern: [component] [agent] run <uuid> ended with stopReason=<reason>
    */
   private isStopReasonLine(line: string): boolean {
-    return /ended with stopReason=/.test(line);
+    const trimmed = line.trim();
+    // Match openclaw's specific log line format (anchored to start)
+    return /^\[[\w/-]+\]\s+\[agent\]\s+run\s+[\w-]+\s+ended with stopReason=/.test(trimmed);
   }
 
   /**
