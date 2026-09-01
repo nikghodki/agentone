@@ -348,6 +348,28 @@ describe("OpenclawAdapter", () => {
 
       await expect(adapter.start()).rejects.toThrow(/not ready/i);
     });
+
+    it("F4: accepts 'OpenClaw' with capital C in version output", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        // REAL output: "OpenClaw" with capital C
+        stdout: "OpenClaw 2026.8.1 (ea80657)\n",
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(
+        tempDir,
+        undefined,
+        mockExecWithArgs
+      );
+
+      // Should NOT throw
+      await expect(adapter.start()).resolves.toBeUndefined();
+
+      expect(mockExecWithArgs).toHaveBeenCalledWith(
+        expect.stringContaining("openclaw"),
+        ["--version"]
+      );
+    });
   });
 
   describe("stop()", () => {
@@ -789,22 +811,28 @@ describe("OpenclawAdapter", () => {
     it("parses installed skills AND MCP servers (installed-only)", async () => {
       const mockExecWithArgs = vi.fn()
         .mockResolvedValueOnce({
-          // First call: openclaw skills list
+          // First call: openclaw skills list (REAL TABLE FORMAT from E2E)
           stdout: `
-Skills:
-  - typescript-helper (installed)
-  - code-review (installed)
-  - documentation (available)
+Skills (4/8 ready)
+┌──────────┬──────────────────────────┬─────────────────────────────────────┬────────────────────┐
+│ Status   │ Skill                    │ Description                         │ Source             │
+├──────────┼──────────────────────────┼─────────────────────────────────────┼────────────────────┤
+│ ✓ ready  │ typescript-helper        │ TypeScript code helper              │ openclaw-bundled   │
+│ ✓ ready  │ code-review              │ Review code for issues              │ openclaw-custodian │
+│ disabled │ 🔐 documentation         │ Generate docs                       │ openclaw-bundled   │
 `,
           stderr: "",
         })
         .mockResolvedValueOnce({
-          // Second call: openclaw mcp list
+          // Second call: openclaw mcp list (REAL TABLE FORMAT - best-effort assumption)
           stdout: `
-MCP Servers:
-  - filesystem (connected)
-  - github (connected)
-  - slack (not_connected)
+MCP Servers (2/3 ready)
+┌──────────┬──────────────────────────┬─────────────────────────────────────┐
+│ Status   │ Server                   │ Description                         │
+├──────────┼──────────────────────────┼─────────────────────────────────────┤
+│ ✓ ready  │ filesystem               │ File system access                  │
+│ ✓ ready  │ github                   │ GitHub API access                   │
+│ disabled │ slack                    │ Slack integration                   │
 `,
           stderr: "",
         });
@@ -826,8 +854,8 @@ MCP Servers:
         ["mcp", "list"]
       );
 
-      // IMPORTANT: Only installed skills (2) + connected MCP (2) = 4 total
-      // "documentation" (available) and "slack" (not_connected) are NOT included
+      // IMPORTANT: Only "✓ ready" skills (2) + "✓ ready" MCP (2) = 4 total
+      // "documentation" (disabled) and "slack" (disabled) are NOT included
       expect(capabilities).toHaveLength(4);
 
       // Check skills
@@ -850,7 +878,7 @@ MCP Servers:
       });
       expect(capabilities.find(c => c.name === "github")).toBeDefined();
 
-      // Verify excluded
+      // Verify disabled ones are excluded
       expect(capabilities.find(c => c.name === "documentation")).toBeUndefined();
       expect(capabilities.find(c => c.name === "slack")).toBeUndefined();
     });
@@ -871,8 +899,11 @@ MCP Servers:
       const mockExecWithArgs = vi.fn()
         .mockResolvedValueOnce({
           stdout: `
-Skills:
-  - test-skill (installed)
+Skills (1/3 ready)
+┌──────────┬──────────────────────────┬─────────────────────────────────────┬────────────────────┐
+│ Status   │ Skill                    │ Description                         │ Source             │
+├──────────┼──────────────────────────┼─────────────────────────────────────┼────────────────────┤
+│ ✓ ready  │ test-skill               │ Test skill                          │ openclaw-bundled   │
 `,
           stderr: "",
         })
@@ -886,6 +917,73 @@ Skills:
       expect(capabilities).toHaveLength(1);
       expect(capabilities[0].name).toBe("test-skill");
       expect(capabilities[0].type).toBe("skill");
+    });
+
+    it("F1: parses real table format with emoji prefixes and excludes disabled skills", async () => {
+      const mockExecWithArgs = vi.fn()
+        .mockResolvedValueOnce({
+          // REAL output from E2E (with emoji prefixes, disabled status)
+          stdout: `
+Skills (2/3 ready)
+┌──────────┬──────────────────────────┬─────────────────────────────────────────────────────────┬────────────────────┐
+│ Status   │ Skill                    │ Description                                             │ Source             │
+├──────────┼──────────────────────────┼─────────────────────────────────────────────────────────┼────────────────────┤
+│ disabled │ 🔐 1password             │ Set up and use 1Password CLI for sign-in, desktop       │ openclaw-bundled   │
+│          │                          │ integration, and reading or injecting secrets.          │                    │
+│ ✓ ready  │ add-model-provider       │ Add and live-prove a model provider with non-interactive│ openclaw-custodian │
+│          │                          │ config one-liners, without exposing credentials.        │                    │
+│ ✓ ready  │ 📝 apple-notes           │ Create, view, edit, delete, search, move, or export     │ openclaw-bundled   │
+│          │                          │ Apple Notes via the memo CLI on macOS.                  │                    │
+`,
+          stderr: "",
+        })
+        .mockResolvedValueOnce({
+          stdout: "No OpenClaw-managed MCP servers configured in /Users/test/.openclaw/openclaw.json.",
+          stderr: "",
+        });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      const capabilities = await adapter.listCapabilities();
+
+      // Only 2 ready skills (excludes disabled 1password)
+      expect(capabilities).toHaveLength(2);
+      expect(capabilities.filter(c => c.type === "skill")).toHaveLength(2);
+
+      // Verify bare skill names (emoji stripped)
+      expect(capabilities.find(c => c.name === "add-model-provider")).toBeDefined();
+      expect(capabilities.find(c => c.name === "apple-notes")).toBeDefined();
+
+      // Verify disabled skill is excluded
+      expect(capabilities.find(c => c.name === "1password")).toBeUndefined();
+    });
+
+    it("F2: handles 'No OpenClaw-managed MCP servers' message", async () => {
+      const mockExecWithArgs = vi.fn()
+        .mockResolvedValueOnce({
+          stdout: `
+Skills (1/1 ready)
+┌──────────┬──────────────────────────┬─────────────────────────────────────┬────────────────────┐
+│ Status   │ Skill                    │ Description                         │ Source             │
+├──────────┼──────────────────────────┼─────────────────────────────────────┼────────────────────┤
+│ ✓ ready  │ test-skill               │ Test skill                          │ openclaw-bundled   │
+`,
+          stderr: "",
+        })
+        .mockResolvedValueOnce({
+          // REAL output when no MCP servers configured
+          stdout: "No OpenClaw-managed MCP servers configured in /Users/nikhil/.openclaw/openclaw.json. Add one with openclaw mcp set <name> '{\"command\":\"uvx\",\"args\":[\"context7-mcp\"]}'.\nNote: this command only shows OpenClaw-managed mcp.servers entries and does not include mcporter servers from config/mcporter.json.",
+          stderr: "",
+        });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      const capabilities = await adapter.listCapabilities();
+
+      // Only the skill, no MCP servers
+      expect(capabilities).toHaveLength(1);
+      expect(capabilities[0].type).toBe("skill");
+      expect(capabilities.filter(c => c.type === "mcp")).toHaveLength(0);
     });
   });
 
@@ -906,7 +1004,7 @@ Skills:
       );
     });
 
-    it("installs an MCP server via openclaw mcp add (NOT throw)", async () => {
+    it("F3: installs MCP server with --url flag", async () => {
       const mockExecWithArgs = vi.fn().mockResolvedValue({
         stdout: "MCP server added successfully",
         stderr: "",
@@ -914,13 +1012,65 @@ Skills:
 
       adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
 
-      await adapter.installCapability({ type: "mcp", name: "filesystem" });
+      await adapter.installCapability({
+        type: "mcp",
+        name: "test-server",
+        url: "http://localhost:8080",
+      } as any);
 
-      // CRITICAL: openclaw SUPPORTS MCP via CLI (unlike hermes)
       expect(mockExecWithArgs).toHaveBeenCalledWith(
         expect.stringContaining("openclaw"),
-        ["mcp", "add", "filesystem"]
+        ["mcp", "add", "test-server", "--url", "http://localhost:8080"]
       );
+    });
+
+    it("F3: installs MCP server with --command flag", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "MCP server added successfully",
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      await adapter.installCapability({
+        type: "mcp",
+        name: "test-server",
+        command: "uvx",
+      } as any);
+
+      expect(mockExecWithArgs).toHaveBeenCalledWith(
+        expect.stringContaining("openclaw"),
+        ["mcp", "add", "test-server", "--command", "uvx"]
+      );
+    });
+
+    it("F3: installs MCP server with --command and --arg flags", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "MCP server added successfully",
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      await adapter.installCapability({
+        type: "mcp",
+        name: "test-server",
+        command: "uvx",
+        args: ["context7-mcp", "--port=8080"],
+      } as any);
+
+      expect(mockExecWithArgs).toHaveBeenCalledWith(
+        expect.stringContaining("openclaw"),
+        ["mcp", "add", "test-server", "--command", "uvx", "--arg", "context7-mcp", "--arg", "--port=8080"]
+      );
+    });
+
+    it("F3: throws error when MCP install has neither url nor command", async () => {
+      adapter = new OpenclawAdapter(tempDir);
+
+      await expect(
+        adapter.installCapability({ type: "mcp", name: "test-server" } as any)
+      ).rejects.toThrow(/openclaw MCP install requires a url or command/);
     });
 
     it("installs a plugin via openclaw plugins install", async () => {
@@ -1055,12 +1205,15 @@ Skills:
       const mockExecWithArgs = vi.fn()
         .mockResolvedValueOnce({
           stdout: `
-Skills:
-  - existing-skill (installed)
+Skills (1/2 ready)
+┌──────────┬──────────────────────────┬─────────────────────────────────────┬────────────────────┐
+│ Status   │ Skill                    │ Description                         │ Source             │
+├──────────┼──────────────────────────┼─────────────────────────────────────┼────────────────────┤
+│ ✓ ready  │ existing-skill           │ An existing skill                   │ openclaw-bundled   │
 `,
           stderr: "",
         })
-        .mockResolvedValueOnce({ stdout: "MCP Servers:\n", stderr: "" });
+        .mockResolvedValueOnce({ stdout: "No OpenClaw-managed MCP servers configured", stderr: "" });
 
       adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
 
@@ -1074,8 +1227,8 @@ Skills:
 
     it("detects missing scoped @skill reference", async () => {
       const mockExecWithArgs = vi.fn()
-        .mockResolvedValueOnce({ stdout: "Skills:\n", stderr: "" })
-        .mockResolvedValueOnce({ stdout: "MCP Servers:\n", stderr: "" });
+        .mockResolvedValueOnce({ stdout: "Skills (0/1 ready)\n", stderr: "" })
+        .mockResolvedValueOnce({ stdout: "No OpenClaw-managed MCP servers configured", stderr: "" });
 
       adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
 
@@ -1091,12 +1244,15 @@ Skills:
       const mockExecWithArgs = vi.fn()
         .mockResolvedValueOnce({
           stdout: `
-Skills:
-  - existing-skill (installed)
+Skills (1/2 ready)
+┌──────────┬──────────────────────────┬─────────────────────────────────────┬────────────────────┐
+│ Status   │ Skill                    │ Description                         │ Source             │
+├──────────┼──────────────────────────┼─────────────────────────────────────┼────────────────────┤
+│ ✓ ready  │ existing-skill           │ An existing skill                   │ openclaw-bundled   │
 `,
           stderr: "",
         })
-        .mockResolvedValueOnce({ stdout: "MCP Servers:\n", stderr: "" });
+        .mockResolvedValueOnce({ stdout: "No OpenClaw-managed MCP servers configured", stderr: "" });
 
       adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
 
@@ -1107,8 +1263,8 @@ Skills:
 
     it("returns null when no capability reference found", async () => {
       const mockExecWithArgs = vi.fn()
-        .mockResolvedValueOnce({ stdout: "Skills:\n", stderr: "" })
-        .mockResolvedValueOnce({ stdout: "MCP Servers:\n", stderr: "" });
+        .mockResolvedValueOnce({ stdout: "Skills (0/1 ready)\n", stderr: "" })
+        .mockResolvedValueOnce({ stdout: "No OpenClaw-managed MCP servers configured", stderr: "" });
 
       adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
 
@@ -1119,11 +1275,14 @@ Skills:
 
     it("detects missing MCP reference when @skill pattern not found", async () => {
       const mockExecWithArgs = vi.fn()
-        .mockResolvedValueOnce({ stdout: "Skills:\n", stderr: "" })
+        .mockResolvedValueOnce({ stdout: "Skills (0/1 ready)\n", stderr: "" })
         .mockResolvedValueOnce({
           stdout: `
-MCP Servers:
-  - github (connected)
+MCP Servers (1/1 ready)
+┌──────────┬──────────────────────────┬─────────────────────────────────────┐
+│ Status   │ Server                   │ Description                         │
+├──────────┼──────────────────────────┼─────────────────────────────────────┤
+│ ✓ ready  │ github                   │ GitHub API access                   │
 `,
           stderr: "",
         });
@@ -1141,8 +1300,8 @@ MCP Servers:
 
     it("uses safe pattern for @skill extraction (allows @, /, -, ., _)", async () => {
       const mockExecWithArgs = vi.fn()
-        .mockResolvedValueOnce({ stdout: "Skills:\n", stderr: "" })
-        .mockResolvedValueOnce({ stdout: "MCP Servers:\n", stderr: "" });
+        .mockResolvedValueOnce({ stdout: "Skills (0/1 ready)\n", stderr: "" })
+        .mockResolvedValueOnce({ stdout: "No OpenClaw-managed MCP servers configured", stderr: "" });
 
       adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
 

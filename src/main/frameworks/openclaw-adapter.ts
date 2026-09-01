@@ -355,7 +355,8 @@ export class OpenclawAdapter implements FrameworkAdapter {
     try {
       // Check binary is accessible
       const result = await this.execWithArgsFn(openclawBinary, ["--version"]);
-      if (!result.stdout.includes("openclaw")) {
+      // Case-insensitive check (real output is "OpenClaw" with capital C)
+      if (!result.stdout.toLowerCase().includes("openclaw")) {
         throw new Error("Unexpected version output");
       }
     } catch (error) {
@@ -572,12 +573,73 @@ export class OpenclawAdapter implements FrameworkAdapter {
   }
 
   /**
-   * List installed capabilities (skills AND MCP servers).
-   * Per verified doc (openclaw-config-spike.md section 5):
-   * - Skills: `openclaw skills list` returns installed/available skills
-   * - MCP: `openclaw mcp list` returns connected/disconnected servers
+   * Parse box-drawing table format used by openclaw CLI (E2E Finding F1/F2).
    *
-   * Returns ONLY installed/connected capabilities (NOT available/disconnected).
+   * Real format:
+   * ```
+   * Skills (23/56 ready)
+   * ┌──────────┬──────────────────────────┬─────────────┬──────────────────┐
+   * │ Status   │ Skill                    │ Description │ Source           │
+   * ├──────────┼──────────────────────────┼─────────────┼──────────────────┤
+   * │ ✓ ready  │ add-model-provider       │ ...         │ openclaw-custodian │
+   * │ disabled │ 🔐 1password             │ ...         │ openclaw-bundled   │
+   * ```
+   *
+   * Extracts names from nameCol where statusCol indicates ready/installed.
+   * Strips emoji/glyph prefixes from names.
+   */
+  private parseCapabilityTable(
+    stdout: string,
+    options: {
+      statusCol: number;   // 0-indexed column with status (e.g., "✓ ready", "disabled")
+      nameCol: number;     // 0-indexed column with capability name
+      readyIndicators: string[];  // Status values that mean "installed/ready"
+    }
+  ): string[] {
+    const lines = stdout.split("\n");
+    const capabilities: string[] = [];
+
+    for (const line of lines) {
+      // Skip non-data rows: summary, box borders, header
+      if (!line.includes("│")) continue;
+      if (line.includes("Status") || line.includes("Skill") || line.includes("Server")) continue;
+
+      // Split on column separator
+      const columns = line.split("│").map(col => col.trim());
+
+      // Need at least statusCol and nameCol
+      if (columns.length <= Math.max(options.statusCol, options.nameCol)) continue;
+
+      const status = columns[options.statusCol + 1]; // +1 because split produces empty first element
+      const name = columns[options.nameCol + 1];
+
+      // Skip if status column is empty (continuation row) or not ready
+      if (!status || !options.readyIndicators.some(indicator => status.includes(indicator))) {
+        continue;
+      }
+
+      // Skip if name is empty (continuation row)
+      if (!name) continue;
+
+      // Strip emoji and other leading glyphs from name
+      // Pattern: remove emoji, symbols, and spaces at the start
+      const bareName = name.replace(/^[\p{Emoji}\p{Symbol}\s🔐📝]+/u, "").trim();
+
+      if (bareName) {
+        capabilities.push(bareName);
+      }
+    }
+
+    return capabilities;
+  }
+
+  /**
+   * List installed capabilities (skills AND MCP servers).
+   * Per E2E verification (openclaw-e2e.md):
+   * - Skills: `openclaw skills list` returns box-drawing table with Status/Skill columns
+   * - MCP: `openclaw mcp list` returns box-drawing table OR "No OpenClaw-managed MCP servers..." message
+   *
+   * Returns ONLY ready/connected capabilities (excludes disabled/not_connected).
    * This ensures detectGap can correctly identify missing capabilities.
    *
    * SECURITY: Uses argument array to prevent command injection.
@@ -586,40 +648,46 @@ export class OpenclawAdapter implements FrameworkAdapter {
     const openclawBinary = this.getOpenclawBinary();
     const capabilities: InstalledCapability[] = [];
 
-    // Parse installed skills
+    // F1: Parse installed skills (REAL table format from E2E)
     const skillsResult = await this.execWithArgsFn(openclawBinary, ["skills", "list"]);
-    const skillLines = skillsResult.stdout.split("\n");
-    for (const line of skillLines) {
-      // Match lines like "  - skill-name (installed)"
-      // IMPORTANT: Only match installed, NOT available
-      const match = line.match(/^\s*-\s+(\S+)\s+\(installed\)/);
-      if (match) {
-        const skillName = match[1];
-        capabilities.push({
-          deploymentId: "openclaw-local",
-          type: "skill",
-          name: skillName,
-          source: "openclaw",
-        });
-      }
+    const skillNames = this.parseCapabilityTable(skillsResult.stdout, {
+      statusCol: 0,  // First column after split
+      nameCol: 1,    // Second column after split
+      readyIndicators: ["✓ ready", "ready"],
+    });
+
+    for (const skillName of skillNames) {
+      capabilities.push({
+        deploymentId: "openclaw-local",
+        type: "skill",
+        name: skillName,
+        source: "openclaw",
+      });
     }
 
-    // Parse connected MCP servers
+    // F2: Parse connected MCP servers (REAL format from E2E)
     const mcpResult = await this.execWithArgsFn(openclawBinary, ["mcp", "list"]);
-    const mcpLines = mcpResult.stdout.split("\n");
-    for (const line of mcpLines) {
-      // Match lines like "  - server-name (connected)"
-      // IMPORTANT: Only match connected, NOT not_connected/disconnected
-      const match = line.match(/^\s*-\s+(\S+)\s+\(connected\)/);
-      if (match) {
-        const serverName = match[1];
-        capabilities.push({
-          deploymentId: "openclaw-local",
-          type: "mcp",
-          name: serverName,
-          source: "openclaw",
-        });
-      }
+
+    // Handle "No OpenClaw-managed MCP servers" message (E2E Finding F2)
+    if (mcpResult.stdout.includes("No OpenClaw-managed MCP servers")) {
+      return capabilities; // No MCP servers configured
+    }
+
+    // POPULATED mcp list format UNVERIFIED (E2E had 0 servers); parser assumes same
+    // box-table shape as skills list — confirm in a later live run.
+    const mcpNames = this.parseCapabilityTable(mcpResult.stdout, {
+      statusCol: 0,
+      nameCol: 1,
+      readyIndicators: ["✓ ready", "ready", "connected"],
+    });
+
+    for (const serverName of mcpNames) {
+      capabilities.push({
+        deploymentId: "openclaw-local",
+        type: "mcp",
+        name: serverName,
+        source: "openclaw",
+      });
     }
 
     return capabilities;
@@ -629,7 +697,7 @@ export class OpenclawAdapter implements FrameworkAdapter {
    * Install a capability (skill, MCP, or plugin).
    * Per verified doc (openclaw-config-spike.md section 5):
    * - Skills: `openclaw skills install <name>`
-   * - MCP: `openclaw mcp add <name>` (openclaw SUPPORTS MCP via CLI)
+   * - MCP: `openclaw mcp add <name> --url <url>` OR `openclaw mcp add <name> --command <cmd> --arg <arg1> --arg <arg2>`
    * - Plugins: `openclaw plugins install <name>`
    *
    * SECURITY: Two-layer defense against command injection:
@@ -639,6 +707,9 @@ export class OpenclawAdapter implements FrameworkAdapter {
   async installCapability(spec: {
     type: string;
     name: string;
+    url?: string;
+    command?: string;
+    args?: string[];
   }): Promise<void> {
     // Layer 1: Validate name (defense-in-depth)
     this.validateCapabilityName(spec.name);
@@ -652,9 +723,23 @@ export class OpenclawAdapter implements FrameworkAdapter {
     }
 
     if (spec.type === "mcp") {
-      // CRITICAL: openclaw SUPPORTS MCP via CLI (unlike hermes/zeptoclaw)
-      // Per verified doc: `openclaw mcp add <name>`
-      await this.execWithArgsFn(openclawBinary, ["mcp", "add", spec.name]);
+      // CRITICAL: openclaw MCP add REQUIRES --url OR --command (E2E Finding F3)
+      // Per E2E: `openclaw mcp add <name>` alone FAILS
+      if (spec.url) {
+        await this.execWithArgsFn(openclawBinary, ["mcp", "add", spec.name, "--url", spec.url]);
+      } else if (spec.command) {
+        const args = ["mcp", "add", spec.name, "--command", spec.command];
+        if (spec.args) {
+          for (const arg of spec.args) {
+            args.push("--arg", arg);
+          }
+        }
+        await this.execWithArgsFn(openclawBinary, args);
+      } else {
+        throw new Error(
+          `openclaw MCP install requires a url or command for '${spec.name}'; name alone is insufficient`
+        );
+      }
       return;
     }
 
