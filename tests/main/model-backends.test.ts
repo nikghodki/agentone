@@ -369,6 +369,24 @@ describe("AzureOpenAIBackend", () => {
     expect(calls[0].opts.headers["Authorization"]).toBeUndefined();
     expect(out).toBe("hi");
   });
+
+  it("Azure backend throws clear error when extra config is missing required fields", async () => {
+    const fakeFetch = async () => ({ ok: true, body: null } as any);
+
+    // Missing extra entirely
+    const cfg1 = { id: "a", provider: "azure", protocol: "v1/chat/completions", model: "gpt-4o" };
+    await expect(async () => {
+      const backend = new BackendClass(cfg1 as any, "key", fakeFetch as any);
+      await backend.chat([{ role: "user", content: "test" }], () => {});
+    }).rejects.toThrow("Azure backend requires extra.resourceUrl, extra.deployment, and extra.apiVersion");
+
+    // Missing deployment
+    const cfg2 = { id: "a", provider: "azure", extra: { resourceUrl: "https://r", apiVersion: "v" } };
+    await expect(async () => {
+      const backend = new BackendClass(cfg2 as any, "key", fakeFetch as any);
+      await backend.chat([{ role: "user", content: "test" }], () => {});
+    }).rejects.toThrow("Azure backend requires extra.resourceUrl, extra.deployment, and extra.apiVersion");
+  });
 });
 
 describe("createBackend", () => {

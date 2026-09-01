@@ -20,6 +20,10 @@ export class AzureOpenAIBackend implements ModelBackend {
   }
 
   async chat(messages: ChatMessage[], onToken: (t: string) => void): Promise<string> {
+    if (!this.config.extra?.resourceUrl || !this.config.extra?.deployment || !this.config.extra?.apiVersion) {
+      throw new Error("Azure backend requires extra.resourceUrl, extra.deployment, and extra.apiVersion");
+    }
+
     const { resourceUrl, deployment, apiVersion } = this.config.extra as {
       resourceUrl: string;
       deployment: string;
