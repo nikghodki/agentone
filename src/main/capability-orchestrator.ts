@@ -65,6 +65,60 @@ export class CapabilityOrchestrator {
       let gapDetected: ParsedGap | null = null;
       let taskDone = false;
 
+      // NEW: Pre-flight gap detection (if adapter supports it)
+      if (typeof this.adapter.detectGap === "function") {
+        const preflightGap = await this.adapter.detectGap(input);
+        if (preflightGap) {
+          const capabilityKey = `${preflightGap.type}:${preflightGap.name}`;
+
+          // Re-install guard: if we already installed this capability, throw error
+          if (installedThisRun.has(capabilityKey)) {
+            throw new Error(
+              `Capability "${preflightGap.name}" was already installed this run but the gap persists. ` +
+              `The adapter may not have reloaded the capability, or the name/type may be incorrect.`
+            );
+          }
+
+          // Install the capability
+          try {
+            onStatus(`Setting up ${preflightGap.name}...`);
+
+            await this.adapter.installCapability({
+              type: preflightGap.type,
+              name: preflightGap.name,
+            });
+
+            // Record in database
+            this.db.recordCapability({
+              deploymentId: this.deploymentId,
+              type: preflightGap.type as "mcp" | "plugin" | "skill",
+              name: preflightGap.name,
+              source: "marketplace",
+            });
+
+            // Mark as installed this run
+            installedThisRun.add(capabilityKey);
+
+            // Check if restart is required
+            const needsRestart = this.adapter.requiresRestartAfterInstall();
+
+            if (needsRestart) {
+              // Monitored restart: stop → start → poll status
+              await this.adapter.stop();
+              await this.adapter.start();
+
+              // Poll status until healthy with timeout
+              await this.waitUntilHealthy();
+            }
+
+            // Continue to send the task
+          } catch (error) {
+            // Surface installation errors clearly
+            throw error;
+          }
+        }
+      }
+
       // Send the task (first iteration) or resume (after gap install)
       await this.adapter.sendTask(input);
 
