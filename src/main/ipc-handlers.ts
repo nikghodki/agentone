@@ -134,6 +134,38 @@ export function handleSaveModelBackend(
   return id;
 }
 
+/**
+ * Handler for remove-capability IPC call.
+ * Removes a capability from the framework (if running) and always deletes the DB row.
+ */
+export async function handleRemoveCapability(
+  deploymentId: string,
+  spec: { type: string; name: string },
+  deps: {
+    db: Database;
+    getAdapter: (id: string) => FrameworkAdapter | undefined;
+  }
+): Promise<{ frameworkRemoved: boolean; note?: string }> {
+  const adapter = deps.getAdapter(deploymentId);
+
+  let result: { frameworkRemoved: boolean; note?: string };
+  if (adapter) {
+    result = await adapter.removeCapability(spec);
+  } else {
+    result = {
+      frameworkRemoved: false,
+      note: "Deployment is not running — removed from AgentOne's list only; the framework may still have it until redeploy."
+    };
+  }
+
+  // Delete the app's record after a resolved framework outcome (removed, or unsupported/not-running → forget).
+  // If adapter.removeCapability THROWS (a real uninstall error), we intentionally do NOT reach here:
+  // the row is retained and the error propagates so the user sees the failure and can retry.
+  deps.db.removeCapability(deploymentId, spec.type, spec.name);
+
+  return result;
+}
+
 export function registerIpcHandlers(db: Database, rateLimiter: RateLimiter, secrets: Secrets) {
   const paths = getAppPaths();
 
@@ -363,6 +395,17 @@ export function registerIpcHandlers(db: Database, rateLimiter: RateLimiter, secr
     ): string => {
       return handleSaveModelBackend(db, secrets, draft, secret);
     }
+  );
+
+  ipcMain.handle("get-capabilities", (_e, deploymentId: string) =>
+    db.getCapabilities(deploymentId)
+  );
+
+  ipcMain.handle("remove-capability", (_e, deploymentId: string, spec: { type: string; name: string }) =>
+    handleRemoveCapability(deploymentId, spec, {
+      db,
+      getAdapter: (id) => deploymentRegistry.get(id)?.adapter
+    })
   );
 }
 

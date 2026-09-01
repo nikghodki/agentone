@@ -415,6 +415,18 @@ export class ZeptoclawAdapter implements FrameworkAdapter {
   }
 
   /**
+   * Remove a capability.
+   * Per verified doc: ZeptoClaw does NOT support uninstalling capabilities via CLI
+   * for any type (skill, MCP, plugin). Always returns frameworkRemoved false with note.
+   *
+   * SECURITY: Validates name but never shells out (no CLI uninstall commands).
+   */
+  async removeCapability(spec: { type: string; name: string }): Promise<{ frameworkRemoved: boolean; note?: string }> {
+    this.validateCapabilityName(spec.name);
+    return { frameworkRemoved: false, note: "ZeptoClaw does not support uninstalling capabilities via CLI — removed from AgentOne's list only." };
+  }
+
+  /**
    * Check if a task references an unavailable capability.
    * Returns the gap spec if found, null otherwise.
    *

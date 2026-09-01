@@ -36,6 +36,7 @@ export interface FrameworkAdapter {
   streamOutput(cb: (chunk: string) => void): () => void;
   listCapabilities(): Promise<InstalledCapability[]>;
   installCapability(spec: { type: string; name: string; url?: string; command?: string; args?: string[] }): Promise<void>;
+  removeCapability(spec: { type: string; name: string }): Promise<{ frameworkRemoved: boolean; note?: string }>;
   requiresRestartAfterInstall(): boolean;
   restart(): Promise<void>;
   detectGap?(input: string): Promise<{ type: "skill" | "mcp" | "plugin"; name: string } | null>;

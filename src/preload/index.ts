@@ -56,6 +56,11 @@ const api: ElectronAPI = {
 
   saveModelBackend: (draft, secret) =>
     ipcRenderer.invoke("save-model-backend", draft, secret),
+
+  getCapabilities: (deploymentId) =>
+    ipcRenderer.invoke("get-capabilities", deploymentId),
+  removeCapability: (deploymentId, spec) =>
+    ipcRenderer.invoke("remove-capability", deploymentId, spec),
 };
 
 contextBridge.exposeInMainWorld("electronAPI", api);

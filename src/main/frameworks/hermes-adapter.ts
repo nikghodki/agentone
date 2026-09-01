@@ -482,6 +482,25 @@ export class HermesAdapter implements FrameworkAdapter {
   }
 
   /**
+   * Remove a capability (skill, MCP, or plugin).
+   * Per verified doc:
+   * - Skills: `hermes skills uninstall <name>`
+   * - MCP: `hermes mcp remove <name>`
+   * - Plugins: `hermes plugins remove <name>`
+   *
+   * SECURITY: Two-layer defense against command injection:
+   * 1. Validates name against strict pattern (no shell metacharacters)
+   * 2. Uses argument array (execFile) instead of shell string interpolation
+   */
+  async removeCapability(spec: { type: string; name: string }): Promise<{ frameworkRemoved: boolean; note?: string }> {
+    this.validateCapabilityName(spec.name);
+    if (spec.type === "skill")  { await this.execWithArgsFn("hermes", ["skills", "uninstall", "--yes", spec.name]); return { frameworkRemoved: true }; }
+    if (spec.type === "mcp")    { await this.execWithArgsFn("hermes", ["mcp", "remove", spec.name]);       return { frameworkRemoved: true }; }
+    if (spec.type === "plugin") { await this.execWithArgsFn("hermes", ["plugins", "remove", spec.name]);   return { frameworkRemoved: true }; }
+    throw new Error(`Unsupported capability type: ${spec.type}`);
+  }
+
+  /**
    * Check if a task references an unavailable capability.
    * Returns the gap spec if found, null otherwise.
    *

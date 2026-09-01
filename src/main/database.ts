@@ -346,6 +346,12 @@ export class Database {
       }));
   }
 
+  removeCapability(deploymentId: string, type: string, name: string): void {
+    this.db
+      .prepare("DELETE FROM capabilities WHERE deployment_id = ? AND type = ? AND name = ?")
+      .run(deploymentId, type, name);
+  }
+
   close(): void {
     this.db.close();
   }
