@@ -1,6 +1,6 @@
 import { promises as fs } from "fs";
 import * as path from "path";
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
 import { promisify } from "util";
 import {
   FrameworkAdapter,
@@ -11,6 +11,7 @@ import { ProcessManager } from "./process-manager";
 import { Secrets } from "../secrets";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 /**
  * Default probe function to check if a binary exists.
@@ -30,6 +31,7 @@ interface ExecResult {
 }
 
 type ExecFunction = (cmd: string) => Promise<ExecResult>;
+type ExecWithArgsFunction = (cmd: string, args: string[]) => Promise<ExecResult>;
 
 /**
  * HermesAdapter implements the FrameworkAdapter interface for Hermes Agent.
@@ -54,6 +56,7 @@ export class HermesAdapter implements FrameworkAdapter {
   private processManager: ProcessManager;
   private secrets: Secrets | null;
   private execFn: ExecFunction;
+  private execWithArgsFn: ExecWithArgsFunction;
   private currentBackend: ModelBackendConfig | null = null;
 
   /**
@@ -62,19 +65,49 @@ export class HermesAdapter implements FrameworkAdapter {
    * @param processManager - ProcessManager for spawning child processes (injectable for tests)
    * @param secrets - Secrets store for API keys (injectable for tests)
    * @param execFn - Function to execute shell commands (injectable for tests)
+   * @param execWithArgs - Function to execute commands with arg array (injectable for tests, defaults to execFile)
    */
   constructor(
     configDir: string = path.join(process.env.HOME || "~", ".hermes"),
     probe: (binaryName: string) => Promise<boolean> = defaultProbe,
     processManager?: ProcessManager,
     secrets?: Secrets | null,
-    execFn?: ExecFunction
+    execFn?: ExecFunction,
+    execWithArgs?: ExecWithArgsFunction
   ) {
     this.configDir = configDir;
     this.probe = probe;
     this.processManager = processManager || new ProcessManager();
     this.secrets = secrets !== undefined ? secrets : null;
     this.execFn = execFn || (execAsync as ExecFunction);
+    this.execWithArgsFn = execWithArgs || this.defaultExecWithArgs.bind(this);
+  }
+
+  /**
+   * Default implementation of execWithArgs using execFile (no shell parsing).
+   * This prevents command injection by passing arguments as an array.
+   */
+  private async defaultExecWithArgs(cmd: string, args: string[]): Promise<ExecResult> {
+    const { stdout, stderr } = await execFileAsync(cmd, args);
+    return { stdout, stderr };
+  }
+
+  /**
+   * Validate capability name to prevent command injection.
+   * Allows alphanumeric, dots, underscores, @, forward slashes, and hyphens.
+   * This supports scoped/marketplace names like @scope/skill-name.
+   *
+   * SECURITY: Defense-in-depth against command injection. Even though we use
+   * argument arrays (no shell parsing), validation provides an extra layer.
+   */
+  private validateCapabilityName(name: string): void {
+    const safePattern = /^[A-Za-z0-9._@/-]+$/;
+    if (!safePattern.test(name)) {
+      throw new Error(
+        `Invalid capability name: "${name}". ` +
+        `Only alphanumeric characters and ._@/- are allowed.`
+      );
+    }
   }
 
   /**
@@ -350,26 +383,113 @@ export class HermesAdapter implements FrameworkAdapter {
     }
   }
 
+  /**
+   * List installed capabilities (skills).
+   * Per verified doc: `hermes skills list` returns:
+   * Available skills:
+   *   - skill-name (installed)
+   *
+   * SECURITY: Uses argument array to prevent command injection.
+   */
   async listCapabilities(): Promise<InstalledCapability[]> {
-    throw new Error("listCapabilities() not implemented in this task (Task 4)");
+    const result = await this.execWithArgsFn("hermes", ["skills", "list"]);
+    const lines = result.stdout.split("\n");
+    const capabilities: InstalledCapability[] = [];
+
+    for (const line of lines) {
+      // Match lines like "  - skill-name (installed)" or "  - skill-name (available)"
+      const match = line.match(/^\s*-\s+(\S+)\s+\(/);
+      if (match) {
+        const skillName = match[1];
+        capabilities.push({
+          deploymentId: "hermes-local", // Single deployment for now
+          type: "skill",
+          name: skillName,
+          source: "hermes",
+        });
+      }
+    }
+
+    return capabilities;
   }
 
+  /**
+   * Install a capability (skill or MCP).
+   * Per verified doc:
+   * - Skills: `hermes skills install <skill-name>`
+   * - MCP: `hermes mcp add <name> --url <endpoint>` (requires manual config, not supported)
+   *
+   * SECURITY: Two-layer defense against command injection:
+   * 1. Validates name against strict pattern (no shell metacharacters)
+   * 2. Uses argument array (execFile) instead of shell string interpolation
+   */
   async installCapability(spec: {
     type: string;
     name: string;
   }): Promise<void> {
-    throw new Error(
-      "installCapability() not implemented in this task (Task 4)"
-    );
+    // Layer 1: Validate name (defense-in-depth)
+    this.validateCapabilityName(spec.name);
+
+    if (spec.type === "mcp") {
+      throw new Error(
+        "MCP server installation requires manual configuration. Use `hermes mcp add` CLI or edit ~/.hermes/config.yaml."
+      );
+    }
+
+    if (spec.type === "skill") {
+      // Layer 2: Use argument array (no shell parsing)
+      await this.execWithArgsFn("hermes", ["skills", "install", spec.name]);
+      return;
+    }
+
+    throw new Error(`Unsupported capability type: ${spec.type}`);
   }
 
+  /**
+   * Check if restart is required after capability installation.
+   * Per verified doc: "Unknown (not tested due to time constraints).
+   * Hermes runs as a long-lived process (gateway mode) which may require
+   * reload/restart for config changes. CLI mode likely picks up changes immediately."
+   *
+   * CONSERVATIVE CHOICE: Return true to force restart, ensuring capabilities load.
+   * This is safer than assuming hot-reload given the uncertainty in the verified doc.
+   */
   requiresRestartAfterInstall(): boolean {
-    throw new Error(
-      "requiresRestartAfterInstall() not implemented in this task (Task 4)"
-    );
+    return true;
   }
 
+  /**
+   * Restart the hermes agent: stop then start.
+   */
   async restart(): Promise<void> {
-    throw new Error("restart() not implemented in this task (Task 2)");
+    await this.stop();
+    await this.start();
+  }
+
+  /**
+   * Check if a task references an unavailable capability.
+   * Returns the gap spec if found, null otherwise.
+   *
+   * This implements pre-flight gap detection (Approach A from the recipe):
+   * - Parses task for @skill-name references → checks against installed skills
+   *
+   * SECURITY: Uses argument array for all CLI calls.
+   */
+  async detectGap(taskInput: string): Promise<{ type: "skill" | "mcp" | "plugin"; name: string } | null> {
+    // Get current installed skills
+    const availableSkills = await this.listCapabilities();
+    const skillNames = new Set(availableSkills.map(s => s.name));
+
+    // Parse task for capability references
+    // Pattern: @skill-name
+    const skillMatch = taskInput.match(/@([\w-]+)/);
+    if (skillMatch) {
+      const skillName = skillMatch[1];
+      if (!skillNames.has(skillName)) {
+        return { type: "skill", name: skillName };
+      }
+    }
+
+    return null;
   }
 }

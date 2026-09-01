@@ -590,36 +590,275 @@ describe("HermesAdapter", () => {
   });
 
   // ========================================================================
-  // NOT IMPLEMENTED IN TASK 2 - Task 4 will implement capability methods
+  // TASK 3: Capability methods - listCapabilities/installCapability/restart/detectGap
   // ========================================================================
 
-  describe("not-yet-implemented methods (Task 4)", () => {
-    it("listCapabilities() throws not implemented", async () => {
+  describe("listCapabilities()", () => {
+    it("parses hermes skills list output", async () => {
       const mockProbe = vi.fn().mockResolvedValue(true);
-      adapter = new HermesAdapter(tempDir, mockProbe);
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: `
+Available skills:
+  - claude-code (installed)
+  - obsidian (installed)
+  - apple-notes (available)
+`,
+        stderr: "",
+      });
 
-      await expect(adapter.listCapabilities()).rejects.toThrow(/not implemented in this task/i);
+      adapter = new HermesAdapter(
+        tempDir,
+        mockProbe,
+        undefined,
+        null,
+        undefined,
+        mockExecWithArgs
+      );
+
+      const capabilities = await adapter.listCapabilities();
+
+      expect(mockExecWithArgs).toHaveBeenCalledWith("hermes", ["skills", "list"]);
+      expect(capabilities).toHaveLength(3);
+      expect(capabilities[0]).toEqual({
+        deploymentId: "hermes-local",
+        type: "skill",
+        name: "claude-code",
+        source: "hermes",
+      });
+      expect(capabilities[1].name).toBe("obsidian");
+      expect(capabilities[2].name).toBe("apple-notes");
     });
 
-    it("installCapability() throws not implemented", async () => {
+    it("returns empty array when no skills found", async () => {
       const mockProbe = vi.fn().mockResolvedValue(true);
-      adapter = new HermesAdapter(tempDir, mockProbe);
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "Available skills:\n",
+        stderr: "",
+      });
 
-      await expect(adapter.installCapability({ type: "skill", name: "test" })).rejects.toThrow(/not implemented in this task/i);
+      adapter = new HermesAdapter(
+        tempDir,
+        mockProbe,
+        undefined,
+        null,
+        undefined,
+        mockExecWithArgs
+      );
+
+      const capabilities = await adapter.listCapabilities();
+
+      expect(capabilities).toEqual([]);
+    });
+  });
+
+  describe("installCapability()", () => {
+    it("installs a skill with validated name", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "Skill installed successfully",
+        stderr: "",
+      });
+
+      adapter = new HermesAdapter(
+        tempDir,
+        mockProbe,
+        undefined,
+        null,
+        undefined,
+        mockExecWithArgs
+      );
+
+      await adapter.installCapability({ type: "skill", name: "test-skill" });
+
+      expect(mockExecWithArgs).toHaveBeenCalledWith("hermes", [
+        "skills",
+        "install",
+        "test-skill",
+      ]);
     });
 
-    it("requiresRestartAfterInstall() throws not implemented", () => {
+    it("rejects malicious names with shell metacharacters", async () => {
       const mockProbe = vi.fn().mockResolvedValue(true);
       adapter = new HermesAdapter(tempDir, mockProbe);
 
-      expect(() => adapter.requiresRestartAfterInstall()).toThrow(/not implemented in this task/i);
+      // Shell injection attempts
+      await expect(
+        adapter.installCapability({ type: "skill", name: "skill; rm -rf /" })
+      ).rejects.toThrow(/Invalid capability name/);
+
+      await expect(
+        adapter.installCapability({ type: "skill", name: "skill && whoami" })
+      ).rejects.toThrow(/Invalid capability name/);
+
+      await expect(
+        adapter.installCapability({ type: "skill", name: "skill | cat /etc/passwd" })
+      ).rejects.toThrow(/Invalid capability name/);
+
+      await expect(
+        adapter.installCapability({ type: "skill", name: "skill`whoami`" })
+      ).rejects.toThrow(/Invalid capability name/);
+
+      await expect(
+        adapter.installCapability({ type: "skill", name: "skill$(whoami)" })
+      ).rejects.toThrow(/Invalid capability name/);
     });
 
-    it("restart() throws not implemented", async () => {
+    it("accepts safe names with allowed characters", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "OK",
+        stderr: "",
+      });
+
+      adapter = new HermesAdapter(
+        tempDir,
+        mockProbe,
+        undefined,
+        null,
+        undefined,
+        mockExecWithArgs
+      );
+
+      // Valid patterns from real hermes skills
+      await adapter.installCapability({ type: "skill", name: "claude-code" });
+      await adapter.installCapability({ type: "skill", name: "@scope/skill-name" });
+      await adapter.installCapability({ type: "skill", name: "skill_underscore" });
+      await adapter.installCapability({ type: "skill", name: "skill.dot" });
+
+      expect(mockExecWithArgs).toHaveBeenCalledTimes(4);
+    });
+
+    it("throws clear error for unsupported MCP installation", async () => {
       const mockProbe = vi.fn().mockResolvedValue(true);
       adapter = new HermesAdapter(tempDir, mockProbe);
 
-      await expect(adapter.restart()).rejects.toThrow(/not implemented in this task/i);
+      await expect(
+        adapter.installCapability({ type: "mcp", name: "test-mcp" })
+      ).rejects.toThrow(/MCP server installation requires manual/);
+    });
+
+    it("throws for unsupported capability type", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new HermesAdapter(tempDir, mockProbe);
+
+      await expect(
+        adapter.installCapability({ type: "unknown" as any, name: "test" })
+      ).rejects.toThrow(/Unsupported capability type/);
+    });
+  });
+
+  describe("requiresRestartAfterInstall()", () => {
+    it("returns true (conservative choice due to uncertainty)", () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new HermesAdapter(tempDir, mockProbe);
+
+      // Per verified doc: restart behavior is unknown/untested
+      // Conservative choice: require restart to ensure capabilities load
+      expect(adapter.requiresRestartAfterInstall()).toBe(true);
+    });
+  });
+
+  describe("restart()", () => {
+    it("calls stop then start in sequence", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const callOrder: string[] = [];
+      const mockProcessManager = {
+        start: vi.fn(() => callOrder.push("start")),
+        stop: vi.fn(async () => callOrder.push("stop")),
+        isRunning: vi.fn(),
+        getLastError: vi.fn(),
+        getChild: vi.fn(),
+      } as unknown as ProcessManager;
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      adapter = new HermesAdapter(tempDir, mockProbe, mockProcessManager);
+      await adapter.configure(backend);
+      await adapter.restart();
+
+      expect(callOrder).toEqual(["stop", "start"]);
+      expect(mockProcessManager.stop).toHaveBeenCalledOnce();
+      expect(mockProcessManager.start).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("detectGap()", () => {
+    it("detects missing skill referenced with @skill-name", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: `
+Available skills:
+  - claude-code (installed)
+`,
+        stderr: "",
+      });
+
+      adapter = new HermesAdapter(
+        tempDir,
+        mockProbe,
+        undefined,
+        null,
+        undefined,
+        mockExecWithArgs
+      );
+
+      const gap = await adapter.detectGap("Please use @obsidian to create a note");
+
+      expect(gap).toEqual({ type: "skill", name: "obsidian" });
+    });
+
+    it("returns null when skill is available", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: `
+Available skills:
+  - claude-code (installed)
+  - obsidian (installed)
+`,
+        stderr: "",
+      });
+
+      adapter = new HermesAdapter(
+        tempDir,
+        mockProbe,
+        undefined,
+        null,
+        undefined,
+        mockExecWithArgs
+      );
+
+      const gap = await adapter.detectGap("Please use @obsidian to create a note");
+
+      expect(gap).toBeNull();
+    });
+
+    it("returns null when no capability references found", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "Available skills:\n",
+        stderr: "",
+      });
+
+      adapter = new HermesAdapter(
+        tempDir,
+        mockProbe,
+        undefined,
+        null,
+        undefined,
+        mockExecWithArgs
+      );
+
+      const gap = await adapter.detectGap("Just a regular task with no skills");
+
+      expect(gap).toBeNull();
     });
   });
 });
