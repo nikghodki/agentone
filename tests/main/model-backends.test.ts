@@ -554,3 +554,42 @@ describe("createBackend", () => {
     expect(or).toBeInstanceOf(OpenAICompatibleBackend);
   });
 });
+
+describe("BedrockBackend", () => {
+  let createBackend: any;
+
+  beforeEach(async () => {
+    const module = await import("../../src/main/model-backends/index");
+    createBackend = module.createBackend;
+  });
+
+  it("Bedrock backend signs an invoke request and returns the Claude answer (non-streaming)", async () => {
+    const calls: any[] = [];
+    const fakeFetch = async (url: string, opts: any) => {
+      calls.push({ url, opts });
+      return {
+        ok: true,
+        json: async () => ({ content: [{ type: "text", text: "4" }] }),  // Bedrock Anthropic invoke response shape
+      } as any;
+    };
+    const secrets = { get: () => JSON.stringify({ accessKeyId: "AKID", secretAccessKey: "sk" }) } as any;
+    const cfg = {
+      id: "b",
+      kind: "cloud",
+      provider: "bedrock",
+      baseUrl: null,
+      protocol: "v1/messages",
+      model: "anthropic.claude-3-5-sonnet-20240620-v1:0",
+      secretRef: "backend:b",
+      extra: { region: "us-east-1" }
+    };
+    const backend = createBackend(cfg as any, secrets, fakeFetch as any);
+    const tokens: string[] = [];
+    const out = await backend.chat([{ role: "user", content: "2+2? one number" }], (t) => tokens.push(t));
+    expect(calls[0].url).toContain("bedrock-runtime.us-east-1.amazonaws.com");
+    expect(calls[0].url).toContain(encodeURIComponent(cfg.model) + "/invoke");  // or the exact invoke path
+    expect(calls[0].opts.headers["Authorization"]).toContain("AWS4-HMAC-SHA256");
+    expect(out).toBe("4");
+    expect(tokens).toEqual(["4"]);   // non-streaming: single onToken call
+  });
+});

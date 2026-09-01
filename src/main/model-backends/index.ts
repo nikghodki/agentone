@@ -3,6 +3,7 @@ import type { Secrets } from "../secrets";
 import { OpenAICompatibleBackend } from "./openai-compatible";
 import { AnthropicMessagesBackend } from "./anthropic-messages";
 import { AzureOpenAIBackend } from "./azure-openai";
+import { BedrockBackend } from "./bedrock";
 
 /**
  * Creates a ModelBackend instance based on the protocol specified in the config.
@@ -20,6 +21,10 @@ export function createBackend(cfg: ModelBackendConfig, secrets: Secrets, fetchFn
   // Provider-specific routing (before protocol check)
   if (cfg.provider === "azure") {
     return new AzureOpenAIBackend(cfg, apiKey, fetchFn);
+  }
+
+  if (cfg.provider === "bedrock") {
+    return new BedrockBackend(cfg, apiKey, fetchFn);
   }
 
   // Select backend based on protocol
