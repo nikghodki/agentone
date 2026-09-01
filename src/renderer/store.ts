@@ -92,8 +92,9 @@ export const useAppStore = create<AppState>((set) => ({
   isGenerating: false,
   streamingText: "",
 
-  // v2 onboarding initial state
-  selectedFrameworkId: "openclaw",
+  // v2 onboarding initial state — zeptoclaw is the default framework
+  // (only one verified to answer prompts headlessly; see framework-registry.ts)
+  selectedFrameworkId: "zeptoclaw",
   modelBackendDraft: {
     kind: "ollama",
     provider: null,

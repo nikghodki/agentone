@@ -31,17 +31,23 @@ describe("framework-registry", () => {
       });
     });
 
-    it("openclaw is marked as default", () => {
-      const openclaw = FRAMEWORKS.find((fw) => fw.id === "openclaw");
-      expect(openclaw).toBeDefined();
-      expect(openclaw?.isDefault).toBe(true);
+    it("zeptoclaw is marked as default", () => {
+      const zeptoclaw = FRAMEWORKS.find((fw) => fw.id === "zeptoclaw");
+      expect(zeptoclaw).toBeDefined();
+      expect(zeptoclaw?.isDefault).toBe(true);
     });
 
-    it("zeptoclaw and hermes are not marked as default", () => {
-      const zeptoclaw = FRAMEWORKS.find((fw) => fw.id === "zeptoclaw");
+    it("openclaw and hermes are not marked as default", () => {
+      const openclaw = FRAMEWORKS.find((fw) => fw.id === "openclaw");
       const hermes = FRAMEWORKS.find((fw) => fw.id === "hermes");
-      expect(zeptoclaw?.isDefault).not.toBe(true);
+      expect(openclaw?.isDefault).not.toBe(true);
       expect(hermes?.isDefault).not.toBe(true);
+    });
+
+    it("exactly one framework is marked as default", () => {
+      const defaults = FRAMEWORKS.filter((fw) => fw.isDefault === true);
+      expect(defaults).toHaveLength(1);
+      expect(defaults[0].id).toBe("zeptoclaw");
     });
 
     it("each framework has an installRecipe", () => {
@@ -126,10 +132,16 @@ describe("framework-registry", () => {
       expect(seeded.map((fw) => fw.id).sort()).toEqual(["hermes", "openclaw", "zeptoclaw"]);
 
       // Verify data integrity
+      const zeptoclaw = seeded.find((fw) => fw.id === "zeptoclaw");
+      expect(zeptoclaw?.name).toBeTruthy();
+      expect(zeptoclaw?.features).toHaveLength(5);
+      expect(zeptoclaw?.isDefault).toBe(true);
+
+      // openclaw is present but no longer the default
       const openclaw = seeded.find((fw) => fw.id === "openclaw");
       expect(openclaw?.name).toBeTruthy();
       expect(openclaw?.features).toHaveLength(5);
-      expect(openclaw?.isDefault).toBe(true);
+      expect(openclaw?.isDefault).toBe(false);
     });
   });
 });

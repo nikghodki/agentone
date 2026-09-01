@@ -2,11 +2,16 @@
  * Framework Registry — Metadata for the 3 supported AI agent frameworks.
  *
  * Features are sourced from Phase 0 verified installation and interface docs:
- * - docs/research/verified/openclaw.md
  * - docs/research/verified/zeptoclaw.md
+ * - docs/research/verified/openclaw.md
  * - docs/research/verified/hermes-agent.md
  *
- * NOTE: OpenClaw's Ollama wiring is PARTIAL/needs work per the Phase 0 spike.
+ * DEFAULT: zeptoclaw. It is the only framework verified to answer prompts
+ * end-to-end headlessly (hot-reload, no restart). OpenClaw is supported but
+ * NOT the default: its default agent behaves as an interactive voice assistant
+ * (greeting + speech-synthesis) and does not answer one-shot prompts, and this
+ * is not fixable via app-writable config — see
+ * docs/research/verified/openclaw-o4-terminal-tool-spike.md (spec §12 post-O4).
  */
 
 import type { Database } from "./database";
@@ -18,19 +23,6 @@ import type { FrameworkMeta } from "../shared/v2-types";
  */
 export const FRAMEWORKS: FrameworkMeta[] = [
   {
-    id: "openclaw",
-    name: "OpenClaw",
-    features: [
-      "Multi-channel messaging gateway (WhatsApp, Telegram, Slack, Discord, Signal)",
-      "Cloud model providers (Anthropic, OpenAI) with OpenAI-compatible streaming",
-      "MCP protocol native support (server and client commands)",
-      "Extensible via ClawHub skills, plugins, and tools",
-      "Rich CLI with 60+ commands and WebSocket Gateway architecture",
-    ],
-    installRecipe: {},
-    isDefault: true,
-  },
-  {
     id: "zeptoclaw",
     name: "ZeptoClaw",
     features: [
@@ -39,6 +31,19 @@ export const FRAMEWORKS: FrameworkMeta[] = [
       "Hot-reload capabilities (skills available immediately, no restart)",
       "Multi-channel gateway (Telegram, Slack, Discord, WhatsApp, email)",
       "MCP servers and extensible skills system",
+    ],
+    installRecipe: {},
+    isDefault: true,
+  },
+  {
+    id: "openclaw",
+    name: "OpenClaw",
+    features: [
+      "Multi-channel messaging gateway (WhatsApp, Telegram, Slack, Discord, Signal)",
+      "Cloud model providers (Anthropic, OpenAI) with OpenAI-compatible streaming",
+      "MCP protocol native support (server and client commands)",
+      "Extensible via ClawHub skills, plugins, and tools",
+      "Rich CLI with 60+ commands and WebSocket Gateway architecture",
     ],
     installRecipe: {},
   },

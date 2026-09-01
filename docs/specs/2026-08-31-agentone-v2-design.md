@@ -20,7 +20,7 @@
 ## 2. Scope
 
 **In scope (v2):**
-- Support **three frameworks**: **openclaw** (default), **zeptoclaw**, **hermes**.
+- Support **three frameworks**: **zeptoclaw** (default — see §12 post-O4), **openclaw**, **hermes**.
 - Runtime: **both local and remote** framework deployments.
 - Model backends: managed-local (Ollama), advanced-local (llama.cpp, vLLM), custom endpoint (`v1/messages` / `v1/chat/completions`), and cloud (Anthropic, OpenAI, OpenRouter, Azure OpenAI, Amazon Bedrock).
 - **App-orchestrated + pre-bundled** capability provisioning (skills/plugins/MCP servers) behind a simple UX.
@@ -188,5 +188,7 @@ v1 `conversations`/`messages` tables are reused for the task/chat surface.
 
 ### Post-spike decisions (amended 2026-08-31, after Phase 0)
 6. **Default framework stays openclaw** (per original product intent), BUT it is built **last** among adapters (spike showed it's hardest to wire), and **"openclaw adapter works end-to-end" is a release gate** — the shipped default must actually function before any release. Build order: **zeptoclaw → hermes → openclaw**.
+
+   **9. Post-O4 REVERSAL (amended after adapter build + O4 investigation): default is now `zeptoclaw`, not openclaw.** All three adapters were built and reviewed. During the openclaw release-gate verification, a controlled investigation found openclaw's default agent behaves as an **interactive voice assistant** (persona "Nova" + speech-synthesis tool): a one-shot headless prompt returns a greeting + an audio attachment instead of an answer (≤2/10 correct). This is **not fixable via app-writable config** — there is no persona/instructions key and `tools.profile` does not reliably disable speech-synthesis; the behavior is baked into openclaw's default agent prompt. openclaw therefore **fails** the decision-#6 release gate ("the shipped default must actually function"). Since **zeptoclaw** (and hermes) were verified answering prompts end-to-end, and zeptoclaw hot-reloads with no restart, **zeptoclaw becomes the shipped default**. openclaw remains a fully-supported, selectable framework but is **not** the default until its headless behavior is resolved (untested avenue: `openclaw agent exec` correctness; or an upstream persona-disable capability). Evidence: `docs/research/verified/openclaw-o4-terminal-tool-spike.md`.
 7. **Capability loop needs no universal restart** — zeptoclaw hot-reloads; restart is per-framework, declared by the adapter (§6/§10).
 8. **Framework installs must be sandboxed** — the hermes installer hijacked the host `node` PATH during the spike; the app must isolate framework installs (isolated PATH/prefix or container) and bundle/isolate openclaw's Node 22, never touching host runtimes.
