@@ -801,7 +801,7 @@ Available skills:
       const exec = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
       const a = new HermesAdapter(undefined, undefined, undefined, undefined, undefined, exec);
       expect(await a.removeCapability({ type: "skill", name: "web-search" })).toEqual({ frameworkRemoved: true });
-      expect(exec).toHaveBeenCalledWith("hermes", ["skills", "uninstall", "web-search"]);
+      expect(exec).toHaveBeenCalledWith("hermes", ["skills", "uninstall", "--yes", "web-search"]);
       await a.removeCapability({ type: "mcp", name: "fs" });
       expect(exec).toHaveBeenCalledWith("hermes", ["mcp", "remove", "fs"]);
       await a.removeCapability({ type: "plugin", name: "p1" });

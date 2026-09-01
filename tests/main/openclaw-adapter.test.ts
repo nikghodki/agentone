@@ -1360,10 +1360,21 @@ Skills (1/1 ready)
       const argLists = exec.mock.calls.map((c: any[]) => c[1]);
       expect(argLists).toContainEqual(["mcp", "unset", "fs"]);
       expect(argLists).toContainEqual(["mcp", "reload"]);
+      // Assert env is passed on all calls (Node-22 sandbox invariant)
+      for (const call of exec.mock.calls) {
+        expect(call[2]?.env).toBeDefined();
+      }
       expect(await a.removeCapability({ type: "plugin", name: "p1" })).toEqual({ frameworkRemoved: true });
+      // Assert --force flag is used for plugins uninstall
+      const pluginCall = exec.mock.calls.find((c: any[]) => c[1]?.includes("uninstall"));
+      expect(pluginCall[1]).toContainEqual("--force");
       const skill = await a.removeCapability({ type: "skill", name: "bundled-x" });
       expect(skill.frameworkRemoved).toBe(false);
       expect(skill.note).toMatch(/bundled/i);
+    });
+    it("removeCapability rejects an injection-y name", async () => {
+      const a = new OpenclawAdapter(tempDir);
+      await expect(a.removeCapability({ type: "skill", name: "a; rm -rf /" })).rejects.toThrow();
     });
   });
 

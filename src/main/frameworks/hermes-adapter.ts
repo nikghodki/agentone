@@ -494,7 +494,7 @@ export class HermesAdapter implements FrameworkAdapter {
    */
   async removeCapability(spec: { type: string; name: string }): Promise<{ frameworkRemoved: boolean; note?: string }> {
     this.validateCapabilityName(spec.name);
-    if (spec.type === "skill")  { await this.execWithArgsFn("hermes", ["skills", "uninstall", spec.name]); return { frameworkRemoved: true }; }
+    if (spec.type === "skill")  { await this.execWithArgsFn("hermes", ["skills", "uninstall", "--yes", spec.name]); return { frameworkRemoved: true }; }
     if (spec.type === "mcp")    { await this.execWithArgsFn("hermes", ["mcp", "remove", spec.name]);       return { frameworkRemoved: true }; }
     if (spec.type === "plugin") { await this.execWithArgsFn("hermes", ["plugins", "remove", spec.name]);   return { frameworkRemoved: true }; }
     throw new Error(`Unsupported capability type: ${spec.type}`);

@@ -669,13 +669,18 @@ describe("ZeptoclawAdapter", () => {
   describe("removeCapability()", () => {
     it("removeCapability returns frameworkRemoved false with a note for every type (no CLI uninstall)", async () => {
       const exec = vi.fn();
-      const a = new ZeptoclawAdapter(undefined, undefined, exec);
+      // Pass exec in the correct position: ZeptoclawAdapter(configDir, probe, processManager, secrets, execFn, execWithArgs)
+      const a = new ZeptoclawAdapter(undefined, undefined, undefined, undefined, undefined, exec);
       for (const type of ["skill", "mcp", "plugin"] as const) {
         const r = await a.removeCapability({ type, name: "x" });
         expect(r.frameworkRemoved).toBe(false);
         expect(r.note).toMatch(/does not support/i);
       }
       expect(exec).not.toHaveBeenCalled();   // never shells out
+    });
+    it("removeCapability rejects an injection-y name", async () => {
+      const a = new ZeptoclawAdapter(undefined, undefined, undefined, undefined, undefined, vi.fn());
+      await expect(a.removeCapability({ type: "skill", name: "a; rm -rf /" })).rejects.toThrow();
     });
   });
 

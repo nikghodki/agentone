@@ -821,7 +821,7 @@ export class OpenclawAdapter implements FrameworkAdapter {
       await this.execWithArgsFn(bin, ["mcp", "reload"], { env });   // hot-reload (verified)
       return { frameworkRemoved: true };
     }
-    if (spec.type === "plugin") { await this.execWithArgsFn(bin, ["plugins", "uninstall", spec.name], { env }); return { frameworkRemoved: true }; }
+    if (spec.type === "plugin") { await this.execWithArgsFn(bin, ["plugins", "uninstall", "--force", spec.name], { env }); return { frameworkRemoved: true }; }
     if (spec.type === "skill")  { return { frameworkRemoved: false, note: "OpenClaw skills are bundled and can only be disabled, not uninstalled via CLI — removed from AgentOne's list only." }; }
     throw new Error(`Unsupported capability type: ${spec.type}`);
   }
