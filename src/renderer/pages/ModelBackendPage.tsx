@@ -23,7 +23,9 @@ export function ModelBackendPage() {
     setModelBackendDraft({
       kind,
       provider: kind === "cloud" ? "anthropic" : null,
-      baseUrl: kind === "ollama" ? "http://localhost:11434" : kind === "cloud" && draft.provider === "openrouter" ? "https://openrouter.ai/api" : null,
+      // cloud always resets provider to "anthropic" (above), so baseUrl starts null here;
+      // handleProviderChange sets the correct baseUrl when the user picks a provider.
+      baseUrl: kind === "ollama" ? "http://localhost:11434" : null,
       protocol: kind === "cloud" ? "v1/messages" : "v1/chat/completions",
       model: "",
       extra: null,
