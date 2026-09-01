@@ -1,5 +1,6 @@
 import { promises as fs } from "fs";
 import * as path from "path";
+import * as os from "os";
 import { exec, execFile } from "child_process";
 import { promisify } from "util";
 import {
@@ -229,9 +230,10 @@ export class HermesAdapter implements FrameworkAdapter {
   async start(): Promise<void> {
     // Build sandboxed env with EXPLICIT PATH (no host PATH inheritance)
     // Include hermes's bundled node in case it's needed, plus standard bins
-    const hermesNodePath = path.join(process.env.HOME || "", ".hermes/node/bin");
+    const homeDir = os.homedir();
+    const hermesNodePath = path.join(homeDir, ".hermes/node/bin");
     const env: Record<string, string> = {
-      HOME: process.env.HOME || "",
+      HOME: homeDir,
       PATH: `${hermesNodePath}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`,
     };
 
@@ -246,7 +248,7 @@ export class HermesAdapter implements FrameworkAdapter {
     }
 
     // Use absolute path to hermes binary (avoid PATH lookup that would require ~/.local/bin)
-    const hermesBinary = path.join(process.env.HOME || "", ".local/bin/hermes");
+    const hermesBinary = path.join(homeDir, ".local/bin/hermes");
 
     // Spawn hermes chat (interactive mode for stdin/stdout streaming)
     this.processManager.start(hermesBinary, ["chat"], { env });

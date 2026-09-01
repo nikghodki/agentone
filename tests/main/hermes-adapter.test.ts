@@ -292,6 +292,7 @@ describe("HermesAdapter", () => {
       const [cmd, args, opts] = (mockProcessManager.start as any).mock.calls[0];
       // Should use absolute path to avoid PATH lookup (H1 guardrail)
       expect(cmd).toContain(".local/bin/hermes");
+      expect(path.isAbsolute(cmd)).toBe(true);
       expect(args).toEqual(["chat"]);
 
       // CRITICAL: Verify PATH is EXPLICIT and sandboxed (H1 guardrail)
