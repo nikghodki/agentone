@@ -1,11 +1,8 @@
 {
   "name": "flashlearn",
   "version": "1.0.0",
-  "description": "",
+  "description": "AgentOne — a desktop launcher and capability manager for agent frameworks (zeptoclaw, hermes, openclaw) with local and cloud model backends.",
   "main": "dist/main/index.js",
-  "directories": {
-    "doc": "docs"
-  },
   "scripts": {
     "dev:renderer": "vite --config vite.config.ts",
     "dev:main": "tsc -p tsconfig.main.json --watch",

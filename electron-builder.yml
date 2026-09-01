@@ -4,42 +4,29 @@ copyright: Copyright © 2026 AgentOne
 
 directories:
   output: release
-  buildResources: resources
 
+# App files. Production node_modules (better-sqlite3 + its deps) are included by
+# electron-builder automatically and pruned of devDependencies — do NOT hand-list
+# node_modules here (the old !node_modules + manual re-include missed transitive
+# deps like `bindings`). Native modules are rebuilt for Electron's ABI on pack.
 files:
   - dist/**/*
   - src/personas/**/*
-  - "!node_modules/**/*"
-  - node_modules/better-sqlite3/**/*
+  - package.json
 
-extraResources:
-  - from: resources/ollama/
-    to: ollama/
-    filter:
-      - "**/*"
+# better-sqlite3 ships a native .node that cannot be loaded from inside the asar
+# archive — unpack it so require() at runtime finds the binary.
+asarUnpack:
+  - node_modules/better-sqlite3/**/*
 
 mac:
   category: public.app-category.productivity
+  # Unsigned local build (no Apple Developer cert). Signing/notarization + a
+  # hardened runtime are a later step for public distribution.
+  identity: null
   target:
     - target: dmg
       arch:
         - arm64
-        - x64
-  hardenedRuntime: true
-  gatekeeperAssess: false
-  entitlements: resources/entitlements.mac.plist
-  entitlementsInherit: resources/entitlements.mac.plist
-
-win:
-  target:
-    - target: nsis
-      arch:
-        - x64
-  artifactName: "${productName}-Setup-${version}.${ext}"
-
-nsis:
-  oneClick: true
-  perMachine: false
-  allowToChangeInstallationDirectory: false
 
 publish: null
