@@ -27,4 +27,21 @@ describe("useAppStore", () => {
     useAppStore.getState().selectPersona("student");
     expect(useAppStore.getState().selectedPersonaId).toBe("student");
   });
+
+  it("modelBackendId starts as null", () => {
+    const state = useAppStore.getState();
+    expect(state.modelBackendId).toBeNull();
+  });
+
+  it("setModelBackendId updates modelBackendId", () => {
+    const testId = "backend-uuid-1234";
+    useAppStore.getState().setModelBackendId(testId);
+    expect(useAppStore.getState().modelBackendId).toBe(testId);
+  });
+
+  it("setModelBackendId can clear modelBackendId", () => {
+    useAppStore.getState().setModelBackendId("some-id");
+    useAppStore.getState().setModelBackendId(null);
+    expect(useAppStore.getState().modelBackendId).toBeNull();
+  });
 });

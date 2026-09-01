@@ -53,6 +53,9 @@ const api: ElectronAPI = {
     ipcRenderer.on("task-status", handler);
     return () => ipcRenderer.removeListener("task-status", handler);
   },
+
+  saveModelBackend: (draft, apiKey) =>
+    ipcRenderer.invoke("save-model-backend", draft, apiKey),
 };
 
 contextBridge.exposeInMainWorld("electronAPI", api);

@@ -237,6 +237,37 @@ export function registerIpcHandlers(db: Database, rateLimiter: RateLimiter, secr
   });
 
   ipcMain.handle("get-deployments", () => db.getDeployments());
+
+  ipcMain.handle(
+    "save-model-backend",
+    (
+      _e,
+      draft: { kind: string; provider: string | null; baseUrl: string | null; protocol: string; model: string },
+      apiKey?: string
+    ): string => {
+      const id = randomUUID();
+      let secretRef: string | null = null;
+
+      // If apiKey is provided and non-empty, store it securely
+      if (apiKey && apiKey.trim() !== "") {
+        secretRef = `backend:${id}`;
+        secrets.set(secretRef, apiKey);
+      }
+
+      // Save the model backend config (never log the apiKey)
+      db.saveModelBackend({
+        id,
+        kind: draft.kind as any,
+        provider: draft.provider,
+        baseUrl: draft.baseUrl,
+        protocol: draft.protocol as any,
+        model: draft.model,
+        secretRef,
+      });
+
+      return id;
+    }
+  );
 }
 
 export function shutdownServices() {
