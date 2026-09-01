@@ -13,9 +13,9 @@ const mockAPI = {
 const { useAppStore } = await import("../../src/renderer/store");
 
 describe("useAppStore", () => {
-  it("initializes with setup view", () => {
+  it("initializes with the v2 framework-select view (first-run entry)", () => {
     const state = useAppStore.getState();
-    expect(state.view).toBe("setup");
+    expect(state.view).toBe("v2-framework-select");
   });
 
   it("setView changes the current view", () => {

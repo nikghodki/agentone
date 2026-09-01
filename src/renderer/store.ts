@@ -81,7 +81,10 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  view: "setup",
+  // v2 first-run enters the framework launcher (spec §5): choose framework →
+  // model backend → deploy (installs the framework) → task. The v1 "setup"
+  // persona/Ollama flow is deferred (spec §12.1) and no longer the entry point.
+  view: "v2-framework-select",
   selectedPersonaId: null,
   selectedPriorities: [],
   personas: [],
