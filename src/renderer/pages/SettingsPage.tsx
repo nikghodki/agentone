@@ -137,6 +137,22 @@ export function SettingsPage() {
           </div>
         </section>
 
+        {/* Capabilities */}
+        <section className="mb-8">
+          <h3 className="text-sm font-medium text-zinc-400 mb-3">Capabilities</h3>
+          <div className="bg-zinc-900 rounded-xl p-4 border border-zinc-800">
+            <p className="text-sm mb-3 text-zinc-400">
+              Manage installed skills, MCP servers, and plugins for your current deployment.
+            </p>
+            <button
+              onClick={() => setView("capabilities")}
+              className="px-4 py-2 bg-zinc-800 rounded-lg text-sm hover:bg-zinc-700 transition-colors"
+            >
+              Manage capabilities
+            </button>
+          </div>
+        </section>
+
         {/* About */}
         <section>
           <h3 className="text-sm font-medium text-zinc-400 mb-3">About</h3>

@@ -8,6 +8,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { FrameworkSelectPage } from "./pages/FrameworkSelectPage";
 import { ModelBackendPage } from "./pages/ModelBackendPage";
 import { TaskPage } from "./pages/TaskPage";
+import { CapabilitiesPage } from "./pages/CapabilitiesPage";
 
 function Placeholder({ name }: { name: string }) {
   return (
@@ -40,6 +41,8 @@ export function App() {
       return <ModelBackendPage />;
     case "task":
       return <TaskPage />;
+    case "capabilities":
+      return <CapabilitiesPage />;
     default:
       return <Placeholder name="Unknown View" />;
   }

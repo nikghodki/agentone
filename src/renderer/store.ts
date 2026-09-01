@@ -12,7 +12,8 @@ export type AppView =
   | "settings"
   | "v2-framework-select"
   | "v2-model-backend"
-  | "task";
+  | "task"
+  | "capabilities";
 
 interface GuidedTaskContext {
   personaId: string;
