@@ -802,6 +802,31 @@ export class OpenclawAdapter implements FrameworkAdapter {
   }
 
   /**
+   * Remove a capability (skill, MCP, or plugin).
+   * Per verified doc:
+   * - MCP: `openclaw mcp unset <name>` then `openclaw mcp reload` (hot-reload)
+   * - Plugins: `openclaw plugins uninstall <name>`
+   * - Skills: NOT supported (bundled) → return frameworkRemoved false with note
+   *
+   * SECURITY: Two-layer defense against command injection:
+   * 1. Validates name against strict pattern (no shell metacharacters)
+   * 2. Uses argument array (execFile) instead of shell string interpolation
+   */
+  async removeCapability(spec: { type: string; name: string }): Promise<{ frameworkRemoved: boolean; note?: string }> {
+    this.validateCapabilityName(spec.name);
+    const bin = this.getOpenclawBinary();
+    const env = this.buildSandboxedEnv();
+    if (spec.type === "mcp") {
+      await this.execWithArgsFn(bin, ["mcp", "unset", spec.name], { env });
+      await this.execWithArgsFn(bin, ["mcp", "reload"], { env });   // hot-reload (verified)
+      return { frameworkRemoved: true };
+    }
+    if (spec.type === "plugin") { await this.execWithArgsFn(bin, ["plugins", "uninstall", spec.name], { env }); return { frameworkRemoved: true }; }
+    if (spec.type === "skill")  { return { frameworkRemoved: false, note: "OpenClaw skills are bundled and can only be disabled, not uninstalled via CLI — removed from AgentOne's list only." }; }
+    throw new Error(`Unsupported capability type: ${spec.type}`);
+  }
+
+  /**
    * Check if a task references an unavailable capability.
    * Returns the gap spec if found, null otherwise.
    *

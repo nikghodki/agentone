@@ -1352,6 +1352,21 @@ Skills (1/1 ready)
     });
   });
 
+  describe("removeCapability()", () => {
+    it("removeCapability: mcp unset+reload, plugins uninstall (verified); skills unsupported → frameworkRemoved false", async () => {
+      const exec = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
+      const a = new OpenclawAdapter(tempDir, undefined, exec);
+      await a.removeCapability({ type: "mcp", name: "fs" });
+      const argLists = exec.mock.calls.map((c: any[]) => c[1]);
+      expect(argLists).toContainEqual(["mcp", "unset", "fs"]);
+      expect(argLists).toContainEqual(["mcp", "reload"]);
+      expect(await a.removeCapability({ type: "plugin", name: "p1" })).toEqual({ frameworkRemoved: true });
+      const skill = await a.removeCapability({ type: "skill", name: "bundled-x" });
+      expect(skill.frameworkRemoved).toBe(false);
+      expect(skill.note).toMatch(/bundled/i);
+    });
+  });
+
   describe("detectGap()", () => {
     it("detects missing @skill reference", async () => {
       const mockExecWithArgs = vi.fn()
