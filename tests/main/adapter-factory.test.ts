@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { ZeptoclawAdapter } from "../../src/main/frameworks/zeptoclaw-adapter";
+import { HermesAdapter } from "../../src/main/frameworks/hermes-adapter";
+import { OpenclawAdapter } from "../../src/main/frameworks/openclaw-adapter";
 import { Secrets } from "../../src/main/secrets";
 import { createAdapter } from "../../src/main/ipc-handlers";
 
@@ -16,6 +18,7 @@ const mockEncryptor = {
  * Unit test for the adapter factory logic.
  * Tests that:
  * - "zeptoclaw" returns a ZeptoclawAdapter instance
+ * - "hermes" returns a HermesAdapter instance
  * - Unsupported frameworks throw clear errors
  */
 describe("Adapter Factory", () => {
@@ -25,17 +28,22 @@ describe("Adapter Factory", () => {
     expect(adapter).toBeInstanceOf(ZeptoclawAdapter);
   });
 
-  it("should throw clear error for unsupported framework 'openclaw'", () => {
+  it("should create HermesAdapter for frameworkId 'hermes'", () => {
     const secrets = new Secrets(":memory:", mockEncryptor);
-    expect(() => createAdapter("openclaw", secrets)).toThrow(
-      'Framework "openclaw" is not yet supported. Only "zeptoclaw" is currently wired for deployment.'
-    );
+    const adapter = createAdapter("hermes", secrets);
+    expect(adapter).toBeInstanceOf(HermesAdapter);
   });
 
-  it("should throw clear error for unsupported framework 'hermes'", () => {
+  it("should create OpenclawAdapter for frameworkId 'openclaw'", () => {
     const secrets = new Secrets(":memory:", mockEncryptor);
-    expect(() => createAdapter("hermes", secrets)).toThrow(
-      'Framework "hermes" is not yet supported. Only "zeptoclaw" is currently wired for deployment.'
+    const adapter = createAdapter("openclaw", secrets);
+    expect(adapter).toBeInstanceOf(OpenclawAdapter);
+  });
+
+  it("should throw clear error for unknown framework", () => {
+    const secrets = new Secrets(":memory:", mockEncryptor);
+    expect(() => createAdapter("bogus", secrets)).toThrow(
+      'Framework "bogus" is not yet supported. Only "zeptoclaw", "hermes", and "openclaw" are currently wired for deployment.'
     );
   });
 });

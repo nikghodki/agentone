@@ -7,6 +7,8 @@ import { detectHardware, selectModel } from "./hardware-detector";
 import { getAppPaths } from "./paths";
 import { FRAMEWORKS } from "./framework-registry";
 import { ZeptoclawAdapter } from "./frameworks/zeptoclaw-adapter";
+import { HermesAdapter } from "./frameworks/hermes-adapter";
+import { OpenclawAdapter } from "./frameworks/openclaw-adapter";
 import { CapabilityOrchestrator } from "./capability-orchestrator";
 import { Secrets } from "./secrets";
 import type { ModelChoice, UserProfile, TaskUsage } from "../shared/types";
@@ -25,16 +27,24 @@ const deploymentRegistry = new Map<string, DeploymentInstance>();
 
 /**
  * Create a FrameworkAdapter instance based on the frameworkId.
- * Only zeptoclaw is wired for now; other frameworks throw a clear error.
+ * Zeptoclaw, Hermes, and OpenClaw are wired; other frameworks throw a clear error.
  */
 export function createAdapter(frameworkId: string, secrets: Secrets): FrameworkAdapter {
   if (frameworkId === "zeptoclaw") {
     return new ZeptoclawAdapter(undefined, undefined, undefined, secrets);
   }
 
+  if (frameworkId === "hermes") {
+    return new HermesAdapter(undefined, undefined, undefined, secrets);
+  }
+
+  if (frameworkId === "openclaw") {
+    return new OpenclawAdapter(undefined, undefined, undefined, undefined, secrets);
+  }
+
   throw new Error(
     `Framework "${frameworkId}" is not yet supported. ` +
-    `Only "zeptoclaw" is currently wired for deployment.`
+    `Only "zeptoclaw", "hermes", and "openclaw" are currently wired for deployment.`
   );
 }
 
