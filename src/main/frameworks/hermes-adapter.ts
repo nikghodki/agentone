@@ -96,6 +96,14 @@ export class HermesAdapter implements FrameworkAdapter {
   }
 
   /**
+   * Escape special characters in YAML string values.
+   * Escapes backslashes and quotes to prevent YAML syntax errors.
+   */
+  private escapeYaml(s: string): string {
+    return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  }
+
+  /**
    * Build YAML config content based on backend kind.
    * Per verified doc:
    * - ollama: provider: "ollama", base_url: baseUrl
@@ -110,7 +118,7 @@ export class HermesAdapter implements FrameworkAdapter {
       case "ollama":
         provider = "ollama";
         baseUrlLine = backend.baseUrl
-          ? `  base_url: "${backend.baseUrl}"\n`
+          ? `  base_url: "${this.escapeYaml(backend.baseUrl)}"\n`
           : "";
         break;
 
@@ -120,7 +128,7 @@ export class HermesAdapter implements FrameworkAdapter {
         // Per verified doc: these map to "custom" provider with base_url
         provider = "custom";
         baseUrlLine = backend.baseUrl
-          ? `  base_url: "${backend.baseUrl}"\n`
+          ? `  base_url: "${this.escapeYaml(backend.baseUrl)}"\n`
           : "";
         break;
 
@@ -136,10 +144,11 @@ export class HermesAdapter implements FrameworkAdapter {
     }
 
     // Build YAML (simple format, no deps)
+    // Escape all interpolated string values to prevent YAML syntax errors
     return (
       `model:\n` +
-      `  default: "${backend.model}"\n` +
-      `  provider: "${provider}"\n` +
+      `  default: "${this.escapeYaml(backend.model)}"\n` +
+      `  provider: "${this.escapeYaml(provider)}"\n` +
       baseUrlLine
     );
   }

@@ -151,7 +151,11 @@ describe("HermesAdapter", () => {
 
       const configContent = await fs.readFile(configPath, "utf-8");
 
-      // Verify no secret values appear in the config
+      // Positive assertions: verify config contains expected provider and model
+      expect(configContent).toContain('provider: "anthropic"');
+      expect(configContent).toContain('default: "claude-3-5-sonnet-20241022"');
+
+      // Negative assertions: verify no secret values appear in the config
       expect(configContent).not.toContain("api_key");
       expect(configContent).not.toContain("apiKey");
       expect(configContent).not.toContain("secret");
@@ -181,6 +185,33 @@ describe("HermesAdapter", () => {
       const configPath = path.join(nonExistentDir, "config.yaml");
       const configContent = await fs.readFile(configPath, "utf-8");
       expect(configContent).toContain('default: "llama3.2:3b"');
+    });
+
+    it("escapes special characters in YAML values", async () => {
+      adapter = new HermesAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "custom-escaped",
+        kind: "custom",
+        provider: null,
+        baseUrl: 'http://localhost:8000/v1?token="secret"&path=\\data',
+        protocol: "v1/chat/completions",
+        model: 'model-with-"quotes"-and-\\backslash',
+        secretRef: null,
+      };
+
+      await adapter.configure(backend);
+
+      const configContent = await fs.readFile(configPath, "utf-8");
+
+      // Verify escaped quotes and backslashes in model name
+      expect(configContent).toContain('default: "model-with-\\"quotes\\"-and-\\\\backslash"');
+
+      // Verify escaped quotes and backslashes in base_url
+      expect(configContent).toContain('base_url: "http://localhost:8000/v1?token=\\"secret\\"&path=\\\\data"');
+
+      // Verify the config is still valid YAML (no syntax errors from unescaped chars)
+      expect(configContent).toContain('provider: "custom"');
     });
   });
 
