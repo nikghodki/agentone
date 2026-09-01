@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import { Database } from "./database";
 import { RateLimiter } from "./rate-limiter";
+import { Secrets } from "./secrets";
 import { registerIpcHandlers, shutdownServices } from "./ipc-handlers";
 import { getAppPaths } from "./paths";
 import { seedFrameworkRegistry } from "./framework-registry";
@@ -45,7 +46,9 @@ app.whenReady().then(() => {
   });
 
   const rateLimiter = new RateLimiter(20);
-  registerIpcHandlers(db, rateLimiter);
+  const secretsPath = path.join(paths.userData, "secrets.json");
+  const secrets = new Secrets(secretsPath);
+  registerIpcHandlers(db, rateLimiter, secrets);
 
   createWindow();
 

@@ -17,11 +17,21 @@ export function ModelBackendPage() {
     });
   };
 
-  const handleFinish = () => {
-    // STUB: The real "install framework / finish" action is a no-op adapter.
-    // Actual adapter wiring (openclaw/zeptoclaw/hermes install) comes in the follow-on plan.
-    console.log("Install framework:", selectedFrameworkId, "with backend:", draft);
-    alert("Onboarding complete (adapter install is stubbed for follow-on plan)");
+  const handleFinish = async () => {
+    try {
+      // Deploy the framework with the configured model backend
+      const deployment = await window.electronAPI.deployFramework(
+        selectedFrameworkId,
+        "placeholder-backend-id" // Model backend persistence is a separate concern
+      );
+
+      // Set the current deployment and navigate to task page
+      useAppStore.getState().setCurrentDeploymentId(deployment.id);
+      useAppStore.getState().setView("task");
+    } catch (err) {
+      console.error("Deploy failed:", err);
+      alert("Failed to deploy framework. See console for details.");
+    }
   };
 
   return (

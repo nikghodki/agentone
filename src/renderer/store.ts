@@ -11,7 +11,8 @@ export type AppView =
   | "chat"
   | "settings"
   | "v2-framework-select"
-  | "v2-model-backend";
+  | "v2-model-backend"
+  | "task";
 
 interface GuidedTaskContext {
   personaId: string;
@@ -44,6 +45,11 @@ interface AppState {
   selectedFrameworkId: string;
   modelBackendDraft: ModelBackendDraft;
 
+  // v2 task state
+  currentDeploymentId: string | null;
+  taskStreamText: string;
+  taskStatus: string | null;
+
   setView: (view: AppView) => void;
   selectPersona: (id: string) => void;
   setPriorities: (priorities: string[]) => void;
@@ -61,6 +67,13 @@ interface AppState {
   // v2 onboarding actions
   setFramework: (id: string) => void;
   setModelBackendDraft: (partial: Partial<ModelBackendDraft>) => void;
+
+  // v2 task actions
+  setCurrentDeploymentId: (id: string | null) => void;
+  appendTaskStreamText: (token: string) => void;
+  clearTaskStreamText: () => void;
+  setTaskStatus: (status: string | null) => void;
+  clearTaskStatus: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -87,6 +100,11 @@ export const useAppStore = create<AppState>((set) => ({
     model: "",
   },
 
+  // v2 task initial state
+  currentDeploymentId: null,
+  taskStreamText: "",
+  taskStatus: null,
+
   setView: (view) => set({ view }),
   selectPersona: (id) => set({ selectedPersonaId: id }),
   setPriorities: (priorities) => set({ selectedPriorities: priorities }),
@@ -106,4 +124,11 @@ export const useAppStore = create<AppState>((set) => ({
   setFramework: (id) => set({ selectedFrameworkId: id }),
   setModelBackendDraft: (partial) =>
     set((s) => ({ modelBackendDraft: { ...s.modelBackendDraft, ...partial } })),
+
+  // v2 task actions
+  setCurrentDeploymentId: (id) => set({ currentDeploymentId: id }),
+  appendTaskStreamText: (token) => set((s) => ({ taskStreamText: s.taskStreamText + token })),
+  clearTaskStreamText: () => set({ taskStreamText: "" }),
+  setTaskStatus: (status) => set({ taskStatus: status }),
+  clearTaskStatus: () => set({ taskStatus: null }),
 }));
