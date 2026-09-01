@@ -141,4 +141,26 @@ describe("Database", () => {
       expect(db.getModelBackend("mb3")?.extra).toEqual({ region: "us-east-1" });
     });
   });
+
+  describe("capabilities", () => {
+    it("removeCapability deletes only the matching capability row", () => {
+      db.seedFrameworks([{ id: "hermes", name: "Hermes", features: ["a","b","c","d","e"], installRecipe: {} }]);
+      const dep = db.createDeployment({ frameworkId: "hermes", location: "local", remoteUrl: null, modelBackendId: null });
+      db.recordCapability({ deploymentId: dep.id, type: "skill", name: "web-search", source: "marketplace" });
+      db.recordCapability({ deploymentId: dep.id, type: "mcp", name: "fs", source: "marketplace" });
+
+      db.removeCapability(dep.id, "skill", "web-search");
+
+      const remaining = db.getCapabilities(dep.id);
+      expect(remaining).toHaveLength(1);
+      expect(remaining[0]).toMatchObject({ type: "mcp", name: "fs" });
+    });
+
+    it("removeCapability is a no-op when the row does not exist", () => {
+      db.seedFrameworks([{ id: "hermes", name: "Hermes", features: ["a","b","c","d","e"], installRecipe: {} }]);
+      const dep = db.createDeployment({ frameworkId: "hermes", location: "local", remoteUrl: null, modelBackendId: null });
+      expect(() => db.removeCapability(dep.id, "skill", "nope")).not.toThrow();
+      expect(db.getCapabilities(dep.id)).toHaveLength(0);
+    });
+  });
 });
