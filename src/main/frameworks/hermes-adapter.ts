@@ -388,6 +388,10 @@ export class HermesAdapter implements FrameworkAdapter {
    * Per verified doc: `hermes skills list` returns:
    * Available skills:
    *   - skill-name (installed)
+   *   - other-skill (available)
+   *
+   * Returns ONLY installed/ready skills, NOT available-but-not-installed.
+   * This ensures detectGap can correctly identify missing capabilities.
    *
    * SECURITY: Uses argument array to prevent command injection.
    */
@@ -397,8 +401,9 @@ export class HermesAdapter implements FrameworkAdapter {
     const capabilities: InstalledCapability[] = [];
 
     for (const line of lines) {
-      // Match lines like "  - skill-name (installed)" or "  - skill-name (available)"
-      const match = line.match(/^\s*-\s+(\S+)\s+\(/);
+      // Match lines like "  - skill-name (installed)" or "  - skill-name (ready)"
+      // IMPORTANT: Only match installed/ready, NOT available
+      const match = line.match(/^\s*-\s+(\S+)\s+\((installed|ready)\)/);
       if (match) {
         const skillName = match[1];
         capabilities.push({
@@ -472,17 +477,19 @@ export class HermesAdapter implements FrameworkAdapter {
    *
    * This implements pre-flight gap detection (Approach A from the recipe):
    * - Parses task for @skill-name references → checks against installed skills
+   * - Supports scoped names like @scope/skill-name
    *
    * SECURITY: Uses argument array for all CLI calls.
    */
   async detectGap(taskInput: string): Promise<{ type: "skill" | "mcp" | "plugin"; name: string } | null> {
-    // Get current installed skills
-    const availableSkills = await this.listCapabilities();
-    const skillNames = new Set(availableSkills.map(s => s.name));
+    // Get current installed skills (installed-only, NOT available)
+    const installedSkills = await this.listCapabilities();
+    const skillNames = new Set(installedSkills.map(s => s.name));
 
     // Parse task for capability references
-    // Pattern: @skill-name
-    const skillMatch = taskInput.match(/@([\w-]+)/);
+    // Pattern: @skill-name or @scope/skill-name
+    // Use same safe chars as validateCapabilityName: [A-Za-z0-9._@/-]+
+    const skillMatch = taskInput.match(/@([A-Za-z0-9._@/-]+)/);
     if (skillMatch) {
       const skillName = skillMatch[1];
       if (!skillNames.has(skillName)) {

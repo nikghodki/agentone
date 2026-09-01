@@ -594,7 +594,7 @@ describe("HermesAdapter", () => {
   // ========================================================================
 
   describe("listCapabilities()", () => {
-    it("parses hermes skills list output", async () => {
+    it("parses hermes skills list output and returns ONLY installed skills", async () => {
       const mockProbe = vi.fn().mockResolvedValue(true);
       const mockExecWithArgs = vi.fn().mockResolvedValue({
         stdout: `
@@ -618,7 +618,8 @@ Available skills:
       const capabilities = await adapter.listCapabilities();
 
       expect(mockExecWithArgs).toHaveBeenCalledWith("hermes", ["skills", "list"]);
-      expect(capabilities).toHaveLength(3);
+      // IMPORTANT: Only 2 skills returned (installed), NOT 3 (apple-notes is available, not installed)
+      expect(capabilities).toHaveLength(2);
       expect(capabilities[0]).toEqual({
         deploymentId: "hermes-local",
         type: "skill",
@@ -626,7 +627,7 @@ Available skills:
         source: "hermes",
       });
       expect(capabilities[1].name).toBe("obsidian");
-      expect(capabilities[2].name).toBe("apple-notes");
+      // apple-notes is NOT included (it's available but not installed)
     });
 
     it("returns empty array when no skills found", async () => {
@@ -859,6 +860,56 @@ Available skills:
       const gap = await adapter.detectGap("Just a regular task with no skills");
 
       expect(gap).toBeNull();
+    });
+
+    it("detects gap for available-but-not-installed skill (CRITICAL)", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: `
+Available skills:
+  - claude-code (installed)
+  - obsidian (available)
+`,
+        stderr: "",
+      });
+
+      adapter = new HermesAdapter(
+        tempDir,
+        mockProbe,
+        undefined,
+        null,
+        undefined,
+        mockExecWithArgs
+      );
+
+      // obsidian is available but NOT installed → should be detected as gap
+      const gap = await adapter.detectGap("Please use @obsidian to create a note");
+
+      expect(gap).toEqual({ type: "skill", name: "obsidian" });
+    });
+
+    it("detects scoped skill names like @scope/skill-name", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: `
+Available skills:
+  - claude-code (installed)
+`,
+        stderr: "",
+      });
+
+      adapter = new HermesAdapter(
+        tempDir,
+        mockProbe,
+        undefined,
+        null,
+        undefined,
+        mockExecWithArgs
+      );
+
+      const gap = await adapter.detectGap("Use @scope/custom-skill for this");
+
+      expect(gap).toEqual({ type: "skill", name: "scope/custom-skill" });
     });
   });
 });
