@@ -3,8 +3,8 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 // Mock window.electronAPI
 const mockAPI = {
   getFrameworks: vi.fn().mockResolvedValue([
-    { id: "openclaw", name: "OpenClaw", features: ["Feature 1"], installRecipe: {}, isDefault: true },
-    { id: "zeptoclaw", name: "ZeptoClaw", features: ["Feature 2"], installRecipe: {} },
+    { id: "zeptoclaw", name: "ZeptoClaw", features: ["Feature 2"], installRecipe: {}, isDefault: true },
+    { id: "openclaw", name: "OpenClaw", features: ["Feature 1"], installRecipe: {} },
     { id: "hermes", name: "Hermes Agent", features: ["Feature 3"], installRecipe: {} },
   ]),
 };
@@ -17,7 +17,7 @@ describe("v2 onboarding store", () => {
   beforeEach(() => {
     // Reset store to initial state
     useAppStore.setState({
-      selectedFrameworkId: "openclaw",
+      selectedFrameworkId: "zeptoclaw",
       modelBackendDraft: {
         kind: "ollama",
         provider: null,
@@ -28,9 +28,9 @@ describe("v2 onboarding store", () => {
     });
   });
 
-  it("initializes with openclaw as default framework", () => {
+  it("initializes with zeptoclaw as default framework", () => {
     const state = useAppStore.getState();
-    expect(state.selectedFrameworkId).toBe("openclaw");
+    expect(state.selectedFrameworkId).toBe("zeptoclaw");
   });
 
   it("setFramework updates the selected framework", () => {
