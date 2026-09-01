@@ -1,4 +1,4 @@
-import type { FrameworkMeta, Deployment } from "./v2-types";
+import type { FrameworkMeta, Deployment, InstalledCapability } from "./v2-types";
 
 export interface AppPaths {
   userData: string;
@@ -127,6 +127,12 @@ export interface ElectronAPI {
     draft: { kind: string; provider: string | null; baseUrl: string | null; protocol: string; model: string; extra?: Record<string, unknown> | null },
     secret?: string
   ) => Promise<string>;
+
+  getCapabilities: (deploymentId: string) => Promise<InstalledCapability[]>;
+  removeCapability: (
+    deploymentId: string,
+    spec: { type: string; name: string }
+  ) => Promise<{ frameworkRemoved: boolean; note?: string }>;
 }
 
 declare global {
