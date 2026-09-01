@@ -158,7 +158,9 @@ export async function handleRemoveCapability(
     };
   }
 
-  // ALWAYS delete the DB row (critical invariant)
+  // Delete the app's record after a resolved framework outcome (removed, or unsupported/not-running → forget).
+  // If adapter.removeCapability THROWS (a real uninstall error), we intentionally do NOT reach here:
+  // the row is retained and the error propagates so the user sees the failure and can retry.
   deps.db.removeCapability(deploymentId, spec.type, spec.name);
 
   return result;

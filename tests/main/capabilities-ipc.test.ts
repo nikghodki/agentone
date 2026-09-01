@@ -29,4 +29,12 @@ describe("capabilities IPC handlers", () => {
     expect(db.removeCapability).toHaveBeenCalled();
     expect(res).toEqual({ frameworkRemoved: false, note: "bundled" });
   });
+
+  it("adapter throw: DB row is NOT deleted and the error propagates (keep-on-error)", async () => {
+    const adapter = { removeCapability: vi.fn().mockRejectedValue(new Error("uninstall failed")) };
+    const db = { removeCapability: vi.fn() };
+    await expect(handleRemoveCapability("dep1", { type: "skill", name: "x" },
+      { db: db as any, getAdapter: () => adapter as any })).rejects.toThrow("uninstall failed");
+    expect(db.removeCapability).not.toHaveBeenCalled();
+  });
 });
