@@ -404,16 +404,19 @@ describe("HermesAdapter", () => {
         getChild: vi.fn(),
       } as unknown as ProcessManager;
 
-      const mockExec = vi.fn().mockResolvedValue({
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
         stdout: "Hermes Agent v0.21.0 (2026.8.31) · upstream 8dbf07e9",
         stderr: "",
       });
 
-      adapter = new HermesAdapter(tempDir, mockProbe, mockProcessManager, null, mockExec);
+      adapter = new HermesAdapter(tempDir, mockProbe, mockProcessManager, null, undefined, mockExecWithArgs);
       const status = await adapter.status();
 
       expect(status).toBe("healthy");
-      expect(mockExec).toHaveBeenCalledWith("hermes --version");
+      // Should use absolute path to hermes binary for consistency with start()
+      const homeDir = os.homedir();
+      const expectedBinary = path.join(homeDir, ".local/bin/hermes");
+      expect(mockExecWithArgs).toHaveBeenCalledWith(expectedBinary, ["--version"]);
     });
 
     it("returns unhealthy when version check fails", async () => {
@@ -426,9 +429,9 @@ describe("HermesAdapter", () => {
         getChild: vi.fn(),
       } as unknown as ProcessManager;
 
-      const mockExec = vi.fn().mockRejectedValue(new Error("command not found"));
+      const mockExecWithArgs = vi.fn().mockRejectedValue(new Error("command not found"));
 
-      adapter = new HermesAdapter(tempDir, mockProbe, mockProcessManager, null, mockExec);
+      adapter = new HermesAdapter(tempDir, mockProbe, mockProcessManager, null, undefined, mockExecWithArgs);
       const status = await adapter.status();
 
       expect(status).toContain("unhealthy: command not found");

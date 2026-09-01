@@ -69,7 +69,7 @@ export class HermesAdapter implements FrameworkAdapter {
    * @param execWithArgs - Function to execute commands with arg array (injectable for tests, defaults to execFile)
    */
   constructor(
-    configDir: string = path.join(process.env.HOME || "~", ".hermes"),
+    configDir: string = path.join(os.homedir(), ".hermes"),
     probe: (binaryName: string) => Promise<boolean> = defaultProbe,
     processManager?: ProcessManager,
     secrets?: Secrets | null,
@@ -267,6 +267,7 @@ export class HermesAdapter implements FrameworkAdapter {
    *
    * IMPORTANT: Also checks that the spawned process is actually running.
    * A dead/failed start() should report unhealthy even if the binary exists.
+   * Uses absolute path to hermes binary for consistency with start().
    */
   async status(): Promise<string> {
     // First check process liveness
@@ -278,9 +279,11 @@ export class HermesAdapter implements FrameworkAdapter {
       return "unhealthy: process not running";
     }
 
-    // Then check binary availability
+    // Then check binary availability using absolute path (consistency with start())
     try {
-      const result = await this.execFn("hermes --version");
+      const homeDir = os.homedir();
+      const hermesBinary = path.join(homeDir, ".local/bin/hermes");
+      const result = await this.execWithArgsFn(hermesBinary, ["--version"]);
       if (result.stdout.includes("Hermes Agent")) {
         return "healthy";
       }
