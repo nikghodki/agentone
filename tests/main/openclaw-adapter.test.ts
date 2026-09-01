@@ -311,32 +311,444 @@ describe("OpenclawAdapter", () => {
     });
   });
 
-  describe("stub methods (Task 2-3)", () => {
-    it("throws not implemented for start()", async () => {
-      adapter = new OpenclawAdapter(tempDir);
-      await expect(adapter.start()).rejects.toThrow(/not implemented/i);
+  // ========================================================================
+  // TASK 2: start/stop/status/sendTask/streamOutput
+  // ========================================================================
+
+  describe("start()", () => {
+    it("spawns openclaw agent --local via ProcessManager with Node-22 sandbox", async () => {
+      // Mock ProcessManager
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn().mockReturnValue(true),
+        getLastError: vi.fn().mockReturnValue(null),
+        getChild: vi.fn().mockReturnValue(null),
+      };
+
+      adapter = new OpenclawAdapter(
+        tempDir,
+        undefined,
+        undefined,
+        mockProcessManager as any
+      );
+
+      // Configure backend first
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+      await adapter.configure(backend);
+
+      await adapter.start();
+
+      expect(mockProcessManager.start).toHaveBeenCalledWith(
+        expect.stringContaining("openclaw"),
+        ["agent", "--local"],
+        expect.objectContaining({
+          env: expect.objectContaining({
+            HOME: expect.any(String),
+            PATH: expect.any(String),
+          }),
+        })
+      );
+
+      // Verify PATH excludes ~/.local/bin
+      const call = mockProcessManager.start.mock.calls[0];
+      const env = call[2].env;
+      expect(env.PATH).not.toContain(".local/bin");
+      // Verify PATH includes Node 22 + standard bins
+      expect(env.PATH).toContain("/usr/bin");
     });
 
-    it("throws not implemented for stop()", async () => {
-      adapter = new OpenclawAdapter(tempDir);
-      await expect(adapter.stop()).rejects.toThrow(/not implemented/i);
+    it("injects API key from secrets when secretRef is present", async () => {
+      const mockSecrets = {
+        get: vi.fn().mockReturnValue("test-api-key-123"),
+      };
+
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn().mockReturnValue(true),
+        getLastError: vi.fn().mockReturnValue(null),
+        getChild: vi.fn().mockReturnValue(null),
+      };
+
+      adapter = new OpenclawAdapter(
+        tempDir,
+        undefined,
+        undefined,
+        mockProcessManager as any,
+        mockSecrets as any
+      );
+
+      const backend: ModelBackendConfig = {
+        id: "cloud-anthropic",
+        kind: "cloud",
+        provider: "anthropic",
+        baseUrl: "https://api.anthropic.com/v1",
+        protocol: "v1/chat/completions",
+        model: "claude-3-sonnet-20240229",
+        secretRef: "anthropic-key",
+      };
+      await adapter.configure(backend);
+
+      await adapter.start();
+
+      // Verify API key was injected into env
+      const call = mockProcessManager.start.mock.calls[0];
+      const env = call[2].env;
+      expect(env.ANTHROPIC_API_KEY).toBe("test-api-key-123");
+      expect(mockSecrets.get).toHaveBeenCalledWith("anthropic-key");
+    });
+  });
+
+  describe("stop()", () => {
+    it("stops the process via ProcessManager", async () => {
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn().mockResolvedValue(undefined),
+        isRunning: vi.fn().mockReturnValue(true),
+        getLastError: vi.fn().mockReturnValue(null),
+        getChild: vi.fn().mockReturnValue(null),
+      };
+
+      adapter = new OpenclawAdapter(
+        tempDir,
+        undefined,
+        undefined,
+        mockProcessManager as any
+      );
+
+      await adapter.stop();
+
+      expect(mockProcessManager.stop).toHaveBeenCalled();
+    });
+  });
+
+  describe("status()", () => {
+    it("returns unhealthy when process is not running", async () => {
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn().mockReturnValue(false),
+        getLastError: vi.fn().mockReturnValue(new Error("spawn ENOENT")),
+        getChild: vi.fn().mockReturnValue(null),
+      };
+
+      adapter = new OpenclawAdapter(
+        tempDir,
+        undefined,
+        undefined,
+        mockProcessManager as any
+      );
+
+      const status = await adapter.status();
+
+      expect(status).toContain("unhealthy");
+      expect(status).toContain("not running");
+      expect(mockProcessManager.isRunning).toHaveBeenCalled();
     });
 
-    it("throws not implemented for status()", async () => {
-      adapter = new OpenclawAdapter(tempDir);
-      await expect(adapter.status()).rejects.toThrow(/not implemented/i);
+    it("returns healthy when process is running and version check passes", async () => {
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn().mockReturnValue(true),
+        getLastError: vi.fn().mockReturnValue(null),
+        getChild: vi.fn().mockReturnValue(null),
+      };
+
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "openclaw version 2026.8.1\n",
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(
+        tempDir,
+        undefined,
+        mockExecWithArgs,
+        mockProcessManager as any
+      );
+
+      const status = await adapter.status();
+
+      expect(status).toBe("healthy");
+      expect(mockExecWithArgs).toHaveBeenCalledWith(
+        expect.stringContaining("openclaw"),
+        ["--version"]
+      );
     });
 
-    it("throws not implemented for sendTask()", async () => {
-      adapter = new OpenclawAdapter(tempDir);
-      await expect(adapter.sendTask("test")).rejects.toThrow(/not implemented/i);
+    it("uses absolute binary path (not host PATH lookup)", async () => {
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn().mockReturnValue(true),
+        getLastError: vi.fn().mockReturnValue(null),
+        getChild: vi.fn().mockReturnValue(null),
+      };
+
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "openclaw version 2026.8.1\n",
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(
+        tempDir,
+        undefined,
+        mockExecWithArgs,
+        mockProcessManager as any
+      );
+
+      await adapter.status();
+
+      // Verify it used an absolute path (contains full path)
+      const call = mockExecWithArgs.mock.calls[0];
+      const binary = call[0];
+      expect(binary).toContain("/");
+      expect(binary).toContain("openclaw");
+    });
+  });
+
+  describe("sendTask()", () => {
+    it("writes input to stdin with newline", async () => {
+      const mockStdin = {
+        write: vi.fn(),
+      };
+
+      const mockChild = {
+        stdin: mockStdin,
+      };
+
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn().mockReturnValue(true),
+        getLastError: vi.fn().mockReturnValue(null),
+        getChild: vi.fn().mockReturnValue(mockChild),
+      };
+
+      adapter = new OpenclawAdapter(
+        tempDir,
+        undefined,
+        undefined,
+        mockProcessManager as any
+      );
+
+      await adapter.sendTask("What is 2+2?");
+
+      expect(mockStdin.write).toHaveBeenCalledWith("What is 2+2?\n");
     });
 
-    it("throws not implemented for streamOutput()", () => {
-      adapter = new OpenclawAdapter(tempDir);
-      expect(() => adapter.streamOutput(() => {})).toThrow(/not implemented/i);
+    it("throws when process not running", async () => {
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn().mockReturnValue(false),
+        getLastError: vi.fn().mockReturnValue(null),
+        getChild: vi.fn().mockReturnValue(null),
+      };
+
+      adapter = new OpenclawAdapter(
+        tempDir,
+        undefined,
+        undefined,
+        mockProcessManager as any
+      );
+
+      await expect(adapter.sendTask("test")).rejects.toThrow(/not running/i);
+    });
+  });
+
+  describe("streamOutput()", () => {
+    it("parses stdout with line buffering and emits agent response", () => {
+      const mockStdout = {
+        on: vi.fn(),
+        once: vi.fn(),
+        off: vi.fn(),
+      };
+
+      const mockChild = {
+        stdout: mockStdout,
+      };
+
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn().mockReturnValue(true),
+        getLastError: vi.fn().mockReturnValue(null),
+        getChild: vi.fn().mockReturnValue(mockChild),
+      };
+
+      adapter = new OpenclawAdapter(
+        tempDir,
+        undefined,
+        undefined,
+        mockProcessManager as any
+      );
+
+      const emittedChunks: string[] = [];
+      adapter.streamOutput((chunk) => {
+        emittedChunks.push(chunk);
+      });
+
+      // Simulate stdout data events
+      const onData = mockStdout.on.mock.calls.find((call: any) => call[0] === "data")?.[1];
+      const onEnd = mockStdout.once.mock.calls.find((call: any) => call[0] === "end")?.[1];
+
+      // Emit agent response line
+      onData(Buffer.from("The answer is 4.\n"));
+
+      // Emit log lines (should be filtered)
+      onData(Buffer.from("[agents/agent-command] [info] processing...\n"));
+
+      // Emit completion signal
+      onData(Buffer.from("[agents/agent-command] [agent] run 9a2ce18a-08bd-4d5a-be7b-63996f2499b5 ended with stopReason=stop\n"));
+
+      // Trigger end
+      onEnd();
+
+      // Verify output
+      expect(emittedChunks).toContain("The answer is 4.");
+      expect(emittedChunks).toContain("__TASK_DONE__");
+      // Verify completion signal line was not emitted as content
+      expect(emittedChunks.filter(c => c.includes("ended with stopReason=stop"))).toHaveLength(0);
     });
 
+    it("handles tokens split across chunks (line buffering)", () => {
+      const mockStdout = {
+        on: vi.fn(),
+        once: vi.fn(),
+        off: vi.fn(),
+      };
+
+      const mockChild = {
+        stdout: mockStdout,
+      };
+
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn().mockReturnValue(true),
+        getLastError: vi.fn().mockReturnValue(null),
+        getChild: vi.fn().mockReturnValue(mockChild),
+      };
+
+      adapter = new OpenclawAdapter(
+        tempDir,
+        undefined,
+        undefined,
+        mockProcessManager as any
+      );
+
+      const emittedChunks: string[] = [];
+      adapter.streamOutput((chunk) => {
+        emittedChunks.push(chunk);
+      });
+
+      const onData = mockStdout.on.mock.calls.find((call: any) => call[0] === "data")?.[1];
+      const onEnd = mockStdout.once.mock.calls.find((call: any) => call[0] === "end")?.[1];
+
+      // Simulate split: "Hello wor" in chunk 1, "ld!\n" in chunk 2
+      onData(Buffer.from("Hello wor"));
+      // Nothing should be emitted yet (no newline)
+      expect(emittedChunks).toHaveLength(0);
+
+      onData(Buffer.from("ld!\n"));
+      // Now the complete line should be emitted
+      expect(emittedChunks).toContain("Hello world!");
+
+      onEnd();
+    });
+
+    it("emits __TASK_DONE__ when stopReason=stop line is detected", () => {
+      const mockStdout = {
+        on: vi.fn(),
+        once: vi.fn(),
+        off: vi.fn(),
+      };
+
+      const mockChild = {
+        stdout: mockStdout,
+      };
+
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn().mockReturnValue(true),
+        getLastError: vi.fn().mockReturnValue(null),
+        getChild: vi.fn().mockReturnValue(mockChild),
+      };
+
+      adapter = new OpenclawAdapter(
+        tempDir,
+        undefined,
+        undefined,
+        mockProcessManager as any
+      );
+
+      const emittedChunks: string[] = [];
+      adapter.streamOutput((chunk) => {
+        emittedChunks.push(chunk);
+      });
+
+      const onData = mockStdout.on.mock.calls.find((call: any) => call[0] === "data")?.[1];
+
+      // Emit various stopReason signals
+      onData(Buffer.from("[agents/agent-command] [agent] run abc123 ended with stopReason=stop\n"));
+      onData(Buffer.from("[agents/agent-command] [agent] run def456 ended with stopReason=end_turn\n"));
+      onData(Buffer.from("[agents/agent-command] [agent] run ghi789 ended with stopReason=max_tokens\n"));
+
+      // Verify __TASK_DONE__ was emitted for each stopReason
+      expect(emittedChunks.filter(c => c === "__TASK_DONE__")).toHaveLength(3);
+    });
+
+    it("returns unsubscribe function that removes listeners", () => {
+      const mockStdout = {
+        on: vi.fn(),
+        once: vi.fn(),
+        off: vi.fn(),
+      };
+
+      const mockChild = {
+        stdout: mockStdout,
+      };
+
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn().mockReturnValue(true),
+        getLastError: vi.fn().mockReturnValue(null),
+        getChild: vi.fn().mockReturnValue(mockChild),
+      };
+
+      adapter = new OpenclawAdapter(
+        tempDir,
+        undefined,
+        undefined,
+        mockProcessManager as any
+      );
+
+      const unsubscribe = adapter.streamOutput(() => {});
+
+      unsubscribe();
+
+      expect(mockStdout.off).toHaveBeenCalledWith("data", expect.any(Function));
+      expect(mockStdout.off).toHaveBeenCalledWith("end", expect.any(Function));
+    });
+  });
+
+  // ========================================================================
+  // TASK 3: Stub methods (not implemented yet)
+  // ========================================================================
+
+  describe("stub methods (Task 3)", () => {
     it("throws not implemented for listCapabilities()", async () => {
       adapter = new OpenclawAdapter(tempDir);
       await expect(adapter.listCapabilities()).rejects.toThrow(/not implemented/i);
