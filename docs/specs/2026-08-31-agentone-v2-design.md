@@ -174,7 +174,9 @@ v1 `conversations`/`messages` tables are reused for the task/chat surface.
 - **Phase 1 (foundations): DONE** — v2 types + schema, secrets, ModelBackend layer (both protocols) + factory, framework registry, onboarding wizard. (Merged.)
 - **Phase 2 (adapters): DONE** — zeptoclaw (reference), hermes, and openclaw adapters + capability orchestrator + sandboxed installs, all merged. Default is **zeptoclaw** (openclaw failed the headless "works E2E" gate — see §12 post-O4). Live E2E findings in `docs/research/verified/`.
 - **Phase 3 (model backends): DONE** — managed **llama.cpp** (download llama-server + curated GGUF, launch on loopback, monitor) + custom endpoint (both protocols) + cloud providers **Anthropic, OpenAI, OpenRouter, Azure OpenAI, Amazon Bedrock** (Bedrock via in-repo AWS SigV4) + API-key/multi-part-credential entry (`secrets.set`, JSON blob for Bedrock). **Deferred:** managed **vLLM** (Linux/CUDA, not Mac-viable — custom endpoint covers BYO vLLM); **Bedrock token streaming** (AWS binary event-stream — non-streaming `invoke` for now); Bedrock limited to Anthropic Claude model family.
-- **Phase 4:** remote deployments; capability management UI; polish.
+- **Phase 4 (in progress):**
+  - **Capability-management UI: DONE** — a page lists each deployment's installed capabilities (from the app DB) grouped by skill/MCP/plugin, with per-item remove. Remove performs a **real per-framework CLI uninstall where the framework supports it** (hermes: all types; openclaw: MCP `mcp unset`+reload and plugins `plugins uninstall`) and otherwise **deletes the app's record and tells the user** (openclaw bundled skills; all zeptoclaw types — no CLI uninstall). The app record is always removed on a resolved outcome; a genuine uninstall error retains the record and surfaces the failure for retry. Verified uninstall commands: `docs/research/verified/capability-uninstall-commands.md`.
+  - **Still pending:** remote framework deployments (connect-only: URL + credentials, no infra provisioning — §12.2); polish.
 
 ---
 
