@@ -553,27 +553,169 @@ export class OpenclawAdapter implements FrameworkAdapter {
     }
   }
 
-  async listCapabilities(): Promise<InstalledCapability[]> {
-    throw new Error("listCapabilities() not implemented in this task (Task 3)");
+  /**
+   * Validate capability name to prevent command injection.
+   * Allows alphanumeric, dots, underscores, @, forward slashes, and hyphens.
+   * This supports scoped/marketplace names like @scope/skill-name.
+   *
+   * SECURITY: Defense-in-depth against command injection. Even though we use
+   * argument arrays (no shell parsing), validation provides an extra layer.
+   */
+  private validateCapabilityName(name: string): void {
+    const safePattern = /^[A-Za-z0-9._@/-]+$/;
+    if (!safePattern.test(name)) {
+      throw new Error(
+        `Invalid capability name: "${name}". ` +
+        `Only alphanumeric characters and ._@/- are allowed.`
+      );
+    }
   }
 
+  /**
+   * List installed capabilities (skills AND MCP servers).
+   * Per verified doc (openclaw-config-spike.md section 5):
+   * - Skills: `openclaw skills list` returns installed/available skills
+   * - MCP: `openclaw mcp list` returns connected/disconnected servers
+   *
+   * Returns ONLY installed/connected capabilities (NOT available/disconnected).
+   * This ensures detectGap can correctly identify missing capabilities.
+   *
+   * SECURITY: Uses argument array to prevent command injection.
+   */
+  async listCapabilities(): Promise<InstalledCapability[]> {
+    const openclawBinary = this.getOpenclawBinary();
+    const capabilities: InstalledCapability[] = [];
+
+    // Parse installed skills
+    const skillsResult = await this.execWithArgsFn(openclawBinary, ["skills", "list"]);
+    const skillLines = skillsResult.stdout.split("\n");
+    for (const line of skillLines) {
+      // Match lines like "  - skill-name (installed)"
+      // IMPORTANT: Only match installed, NOT available
+      const match = line.match(/^\s*-\s+(\S+)\s+\(installed\)/);
+      if (match) {
+        const skillName = match[1];
+        capabilities.push({
+          deploymentId: "openclaw-local",
+          type: "skill",
+          name: skillName,
+          source: "openclaw",
+        });
+      }
+    }
+
+    // Parse connected MCP servers
+    const mcpResult = await this.execWithArgsFn(openclawBinary, ["mcp", "list"]);
+    const mcpLines = mcpResult.stdout.split("\n");
+    for (const line of mcpLines) {
+      // Match lines like "  - server-name (connected)"
+      // IMPORTANT: Only match connected, NOT not_connected/disconnected
+      const match = line.match(/^\s*-\s+(\S+)\s+\(connected\)/);
+      if (match) {
+        const serverName = match[1];
+        capabilities.push({
+          deploymentId: "openclaw-local",
+          type: "mcp",
+          name: serverName,
+          source: "openclaw",
+        });
+      }
+    }
+
+    return capabilities;
+  }
+
+  /**
+   * Install a capability (skill, MCP, or plugin).
+   * Per verified doc (openclaw-config-spike.md section 5):
+   * - Skills: `openclaw skills install <name>`
+   * - MCP: `openclaw mcp add <name>` (openclaw SUPPORTS MCP via CLI)
+   * - Plugins: `openclaw plugins install <name>`
+   *
+   * SECURITY: Two-layer defense against command injection:
+   * 1. Validates name against strict pattern (no shell metacharacters)
+   * 2. Uses argument array (execFile) instead of shell string interpolation
+   */
   async installCapability(spec: {
     type: string;
     name: string;
   }): Promise<void> {
-    throw new Error("installCapability() not implemented in this task (Task 3)");
+    // Layer 1: Validate name (defense-in-depth)
+    this.validateCapabilityName(spec.name);
+
+    const openclawBinary = this.getOpenclawBinary();
+
+    if (spec.type === "skill") {
+      // Layer 2: Use argument array (no shell parsing)
+      await this.execWithArgsFn(openclawBinary, ["skills", "install", spec.name]);
+      return;
+    }
+
+    if (spec.type === "mcp") {
+      // CRITICAL: openclaw SUPPORTS MCP via CLI (unlike hermes/zeptoclaw)
+      // Per verified doc: `openclaw mcp add <name>`
+      await this.execWithArgsFn(openclawBinary, ["mcp", "add", spec.name]);
+      return;
+    }
+
+    if (spec.type === "plugin") {
+      await this.execWithArgsFn(openclawBinary, ["plugins", "install", spec.name]);
+      return;
+    }
+
+    throw new Error(`Unsupported capability type: ${spec.type}`);
   }
 
+  /**
+   * Check if restart is required after capability installation.
+   *
+   * Per verified doc (openclaw-config-spike.md section 5):
+   * "Restart Required: NO - `openclaw mcp reload` provides hot-reload functionality"
+   *
+   * Evidence from spike:
+   * - Skills: hot-reload (no restart needed)
+   * - MCP: hot-reload via `openclaw mcp reload` command
+   *
+   * RETURN FALSE: openclaw hot-reloads both skills and MCP servers.
+   */
   requiresRestartAfterInstall(): boolean {
-    // Stub: return false (actual implementation in Task 3)
     return false;
   }
 
+  /**
+   * Restart the openclaw adapter: stop then start.
+   */
   async restart(): Promise<void> {
-    throw new Error("restart() not implemented in this task (Task 3)");
+    await this.stop();
+    await this.start();
   }
 
-  async detectGap(input: string): Promise<{ type: "skill" | "mcp" | "plugin"; name: string } | null> {
-    throw new Error("detectGap() not implemented in this task (Task 3)");
+  /**
+   * Check if a task references an unavailable capability.
+   * Returns the gap spec if found, null otherwise.
+   *
+   * This implements pre-flight gap detection (Approach A from the recipe):
+   * - Parses task for @skill-name references → checks against installed skills + MCP
+   * - Supports scoped names like @scope/skill-name
+   *
+   * SECURITY: Uses argument array for all CLI calls.
+   */
+  async detectGap(taskInput: string): Promise<{ type: "skill" | "mcp" | "plugin"; name: string } | null> {
+    // Get current installed capabilities (installed-only, both skills + MCP)
+    const installed = await this.listCapabilities();
+    const capabilityNames = new Set(installed.map(c => c.name));
+
+    // Parse task for capability references
+    // Pattern: @skill-name or @scope/skill-name
+    // Use same safe chars as validateCapabilityName: [A-Za-z0-9._@/-]+
+    const skillMatch = taskInput.match(/@([A-Za-z0-9._@/-]+)/);
+    if (skillMatch) {
+      const skillName = skillMatch[1];
+      if (!capabilityNames.has(skillName)) {
+        return { type: "skill", name: skillName };
+      }
+    }
+
+    return null;
   }
 }

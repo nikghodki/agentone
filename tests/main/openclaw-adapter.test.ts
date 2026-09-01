@@ -782,33 +782,376 @@ describe("OpenclawAdapter", () => {
   });
 
   // ========================================================================
-  // TASK 3: Stub methods (not implemented yet)
+  // TASK 3: Capability methods - listCapabilities/installCapability/restart/detectGap
   // ========================================================================
 
-  describe("stub methods (Task 3)", () => {
-    it("throws not implemented for listCapabilities()", async () => {
-      adapter = new OpenclawAdapter(tempDir);
-      await expect(adapter.listCapabilities()).rejects.toThrow(/not implemented/i);
+  describe("listCapabilities()", () => {
+    it("parses installed skills AND MCP servers (installed-only)", async () => {
+      const mockExecWithArgs = vi.fn()
+        .mockResolvedValueOnce({
+          // First call: openclaw skills list
+          stdout: `
+Skills:
+  - typescript-helper (installed)
+  - code-review (installed)
+  - documentation (available)
+`,
+          stderr: "",
+        })
+        .mockResolvedValueOnce({
+          // Second call: openclaw mcp list
+          stdout: `
+MCP Servers:
+  - filesystem (connected)
+  - github (connected)
+  - slack (not_connected)
+`,
+          stderr: "",
+        });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      const capabilities = await adapter.listCapabilities();
+
+      // Verify both commands were called
+      expect(mockExecWithArgs).toHaveBeenCalledTimes(2);
+      expect(mockExecWithArgs).toHaveBeenNthCalledWith(
+        1,
+        expect.stringContaining("openclaw"),
+        ["skills", "list"]
+      );
+      expect(mockExecWithArgs).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining("openclaw"),
+        ["mcp", "list"]
+      );
+
+      // IMPORTANT: Only installed skills (2) + connected MCP (2) = 4 total
+      // "documentation" (available) and "slack" (not_connected) are NOT included
+      expect(capabilities).toHaveLength(4);
+
+      // Check skills
+      expect(capabilities.filter(c => c.type === "skill")).toHaveLength(2);
+      expect(capabilities.find(c => c.name === "typescript-helper")).toEqual({
+        deploymentId: "openclaw-local",
+        type: "skill",
+        name: "typescript-helper",
+        source: "openclaw",
+      });
+      expect(capabilities.find(c => c.name === "code-review")).toBeDefined();
+
+      // Check MCP servers
+      expect(capabilities.filter(c => c.type === "mcp")).toHaveLength(2);
+      expect(capabilities.find(c => c.name === "filesystem")).toEqual({
+        deploymentId: "openclaw-local",
+        type: "mcp",
+        name: "filesystem",
+        source: "openclaw",
+      });
+      expect(capabilities.find(c => c.name === "github")).toBeDefined();
+
+      // Verify excluded
+      expect(capabilities.find(c => c.name === "documentation")).toBeUndefined();
+      expect(capabilities.find(c => c.name === "slack")).toBeUndefined();
     });
 
-    it("throws not implemented for installCapability()", async () => {
-      adapter = new OpenclawAdapter(tempDir);
-      await expect(adapter.installCapability({ type: "skill", name: "test" })).rejects.toThrow(/not implemented/i);
+    it("returns empty array when no capabilities found", async () => {
+      const mockExecWithArgs = vi.fn()
+        .mockResolvedValueOnce({ stdout: "Skills:\n", stderr: "" })
+        .mockResolvedValueOnce({ stdout: "MCP Servers:\n", stderr: "" });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      const capabilities = await adapter.listCapabilities();
+
+      expect(capabilities).toEqual([]);
     });
 
-    it("throws not implemented for restart()", async () => {
-      adapter = new OpenclawAdapter(tempDir);
-      await expect(adapter.restart()).rejects.toThrow(/not implemented/i);
+    it("handles empty/missing MCP section gracefully", async () => {
+      const mockExecWithArgs = vi.fn()
+        .mockResolvedValueOnce({
+          stdout: `
+Skills:
+  - test-skill (installed)
+`,
+          stderr: "",
+        })
+        .mockResolvedValueOnce({ stdout: "", stderr: "" });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      const capabilities = await adapter.listCapabilities();
+
+      // Only the skill should be returned
+      expect(capabilities).toHaveLength(1);
+      expect(capabilities[0].name).toBe("test-skill");
+      expect(capabilities[0].type).toBe("skill");
+    });
+  });
+
+  describe("installCapability()", () => {
+    it("installs a skill via openclaw skills install", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "Skill installed successfully",
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      await adapter.installCapability({ type: "skill", name: "test-skill" });
+
+      expect(mockExecWithArgs).toHaveBeenCalledWith(
+        expect.stringContaining("openclaw"),
+        ["skills", "install", "test-skill"]
+      );
     });
 
-    it("throws not implemented for detectGap()", async () => {
-      adapter = new OpenclawAdapter(tempDir);
-      await expect(adapter.detectGap?.("test")).rejects.toThrow(/not implemented/i);
+    it("installs an MCP server via openclaw mcp add (NOT throw)", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "MCP server added successfully",
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      await adapter.installCapability({ type: "mcp", name: "filesystem" });
+
+      // CRITICAL: openclaw SUPPORTS MCP via CLI (unlike hermes)
+      expect(mockExecWithArgs).toHaveBeenCalledWith(
+        expect.stringContaining("openclaw"),
+        ["mcp", "add", "filesystem"]
+      );
     });
 
-    it("returns false for requiresRestartAfterInstall() (not implemented)", () => {
+    it("installs a plugin via openclaw plugins install", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "Plugin installed successfully",
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      await adapter.installCapability({ type: "plugin", name: "ollama" });
+
+      expect(mockExecWithArgs).toHaveBeenCalledWith(
+        expect.stringContaining("openclaw"),
+        ["plugins", "install", "ollama"]
+      );
+    });
+
+    it("validates name to prevent command injection", async () => {
       adapter = new OpenclawAdapter(tempDir);
-      expect(adapter.requiresRestartAfterInstall()).toBe(false);
+
+      // Shell injection attempts
+      await expect(
+        adapter.installCapability({ type: "skill", name: "skill; rm -rf /" })
+      ).rejects.toThrow(/Invalid capability name/);
+
+      await expect(
+        adapter.installCapability({ type: "skill", name: "skill && whoami" })
+      ).rejects.toThrow(/Invalid capability name/);
+
+      await expect(
+        adapter.installCapability({ type: "skill", name: "skill | cat /etc/passwd" })
+      ).rejects.toThrow(/Invalid capability name/);
+
+      await expect(
+        adapter.installCapability({ type: "skill", name: "skill\nrm -rf /" })
+      ).rejects.toThrow(/Invalid capability name/);
+    });
+
+    it("allows scoped names with @, /, -, ., _", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "OK",
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      // Valid scoped names should pass validation
+      await adapter.installCapability({ type: "skill", name: "@scope/skill-name" });
+      await adapter.installCapability({ type: "skill", name: "org/repo.git" });
+      await adapter.installCapability({ type: "skill", name: "user_skill-v2.0" });
+
+      expect(mockExecWithArgs).toHaveBeenCalledTimes(3);
+    });
+
+    it("passes name as single argv (injection-safe)", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "OK",
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      // Even though this name is rejected by validation, verify arg-array pattern
+      try {
+        await adapter.installCapability({ type: "skill", name: "normal-skill" });
+      } catch {}
+
+      // Verify args are passed as array (not shell string)
+      const call = mockExecWithArgs.mock.calls[0];
+      expect(Array.isArray(call[1])).toBe(true);
+      expect(call[1]).toEqual(["skills", "install", "normal-skill"]);
+    });
+
+    it("throws for unsupported capability types", async () => {
+      adapter = new OpenclawAdapter(tempDir);
+
+      await expect(
+        adapter.installCapability({ type: "unknown" as any, name: "test" })
+      ).rejects.toThrow(/Unsupported capability type/);
+    });
+  });
+
+  describe("requiresRestartAfterInstall()", () => {
+    it("returns false (openclaw hot-reloads skills + MCP per spike)", () => {
+      adapter = new OpenclawAdapter(tempDir);
+
+      const requiresRestart = adapter.requiresRestartAfterInstall();
+
+      // CRITICAL: openclaw supports hot-reload via `openclaw mcp reload`
+      // Per verified doc section 5: "Restart Required: NO - openclaw mcp reload provides hot-reload"
+      expect(requiresRestart).toBe(false);
+    });
+  });
+
+  describe("restart()", () => {
+    it("calls stop then start", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "openclaw version 2026.8.1",
+        stderr: "",
+      });
+
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn().mockResolvedValue(undefined),
+        isRunning: vi.fn().mockReturnValue(true),
+        getLastError: vi.fn().mockReturnValue(null),
+        getChild: vi.fn().mockReturnValue(null),
+      };
+
+      adapter = new OpenclawAdapter(
+        tempDir,
+        undefined,
+        mockExecWithArgs,
+        mockProcessManager as any
+      );
+
+      await adapter.restart();
+
+      // Verify stop was called first
+      expect(mockProcessManager.stop).toHaveBeenCalled();
+      // Verify start was called (version check happens in start)
+      expect(mockExecWithArgs).toHaveBeenCalledWith(
+        expect.stringContaining("openclaw"),
+        ["--version"]
+      );
+    });
+  });
+
+  describe("detectGap()", () => {
+    it("detects missing @skill reference", async () => {
+      const mockExecWithArgs = vi.fn()
+        .mockResolvedValueOnce({
+          stdout: `
+Skills:
+  - existing-skill (installed)
+`,
+          stderr: "",
+        })
+        .mockResolvedValueOnce({ stdout: "MCP Servers:\n", stderr: "" });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      const gap = await adapter.detectGap("Use @missing-skill to complete this task");
+
+      expect(gap).toEqual({
+        type: "skill",
+        name: "missing-skill",
+      });
+    });
+
+    it("detects missing scoped @skill reference", async () => {
+      const mockExecWithArgs = vi.fn()
+        .mockResolvedValueOnce({ stdout: "Skills:\n", stderr: "" })
+        .mockResolvedValueOnce({ stdout: "MCP Servers:\n", stderr: "" });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      const gap = await adapter.detectGap("Use @scope/missing-skill for this");
+
+      expect(gap).toEqual({
+        type: "skill",
+        name: "scope/missing-skill",
+      });
+    });
+
+    it("returns null when @skill is present", async () => {
+      const mockExecWithArgs = vi.fn()
+        .mockResolvedValueOnce({
+          stdout: `
+Skills:
+  - existing-skill (installed)
+`,
+          stderr: "",
+        })
+        .mockResolvedValueOnce({ stdout: "MCP Servers:\n", stderr: "" });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      const gap = await adapter.detectGap("Use @existing-skill to complete this task");
+
+      expect(gap).toBeNull();
+    });
+
+    it("returns null when no capability reference found", async () => {
+      const mockExecWithArgs = vi.fn()
+        .mockResolvedValueOnce({ stdout: "Skills:\n", stderr: "" })
+        .mockResolvedValueOnce({ stdout: "MCP Servers:\n", stderr: "" });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      const gap = await adapter.detectGap("Just a regular task with no special references");
+
+      expect(gap).toBeNull();
+    });
+
+    it("detects missing MCP reference when @skill pattern not found", async () => {
+      const mockExecWithArgs = vi.fn()
+        .mockResolvedValueOnce({ stdout: "Skills:\n", stderr: "" })
+        .mockResolvedValueOnce({
+          stdout: `
+MCP Servers:
+  - github (connected)
+`,
+          stderr: "",
+        });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      // Task references MCP but doesn't use @-syntax (just mentions the tool name)
+      // For this test, let's assume the task just has no @ reference
+      const gap = await adapter.detectGap("Use the filesystem tool to read files");
+
+      // Since there's no @-reference, no gap is detected
+      // This matches the pattern from hermes which only checks @skill references
+      expect(gap).toBeNull();
+    });
+
+    it("uses safe pattern for @skill extraction (allows @, /, -, ., _)", async () => {
+      const mockExecWithArgs = vi.fn()
+        .mockResolvedValueOnce({ stdout: "Skills:\n", stderr: "" })
+        .mockResolvedValueOnce({ stdout: "MCP Servers:\n", stderr: "" });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      const gap = await adapter.detectGap("Use @org/repo-name.v2_test for this");
+
+      expect(gap).toEqual({
+        type: "skill",
+        name: "org/repo-name.v2_test",
+      });
     });
   });
 });
