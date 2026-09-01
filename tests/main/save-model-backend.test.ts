@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Database } from "../../src/main/database";
 import { Secrets } from "../../src/main/secrets";
-import { randomUUID } from "crypto";
+import { handleSaveModelBackend } from "../../src/main/ipc-handlers";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -12,34 +12,6 @@ const fakeEnc = {
   encryptString: (s: string) => Buffer.from(s, "utf8"),
   decryptString: (b: Buffer) => b.toString("utf8"),
 };
-
-// Simulate the saveModelBackend IPC handler logic
-function saveModelBackend(
-  db: Database,
-  secrets: Secrets,
-  draft: { kind: string; provider: string | null; baseUrl: string | null; protocol: string; model: string },
-  apiKey?: string
-): string {
-  const id = randomUUID();
-  let secretRef: string | null = null;
-
-  if (apiKey && apiKey.trim() !== "") {
-    secretRef = `backend:${id}`;
-    secrets.set(secretRef, apiKey);
-  }
-
-  db.saveModelBackend({
-    id,
-    kind: draft.kind as any,
-    provider: draft.provider,
-    baseUrl: draft.baseUrl,
-    protocol: draft.protocol as any,
-    model: draft.model,
-    secretRef,
-  });
-
-  return id;
-}
 
 describe("saveModelBackend IPC handler", () => {
   let db: Database;
@@ -71,7 +43,7 @@ describe("saveModelBackend IPC handler", () => {
     };
     const apiKey = "sk-ant-api03-abcdef1234567890";
 
-    const id = saveModelBackend(db, secrets, draft, apiKey);
+    const id = handleSaveModelBackend(db, secrets, draft, apiKey);
 
     // Backend persisted with non-null secretRef
     const backend = db.getModelBackend(id);
@@ -98,7 +70,7 @@ describe("saveModelBackend IPC handler", () => {
       model: "llama3.2",
     };
 
-    const id = saveModelBackend(db, secrets, draft);
+    const id = handleSaveModelBackend(db, secrets, draft);
 
     // Backend persisted with null secretRef
     const backend = db.getModelBackend(id);
@@ -119,7 +91,7 @@ describe("saveModelBackend IPC handler", () => {
       model: "my-model",
     };
 
-    const id = saveModelBackend(db, secrets, draft, "");
+    const id = handleSaveModelBackend(db, secrets, draft, "");
 
     // Backend persisted with null secretRef
     const backend = db.getModelBackend(id);
@@ -139,7 +111,7 @@ describe("saveModelBackend IPC handler", () => {
     };
     const apiKey = "sk-proj-xyz";
 
-    const id = saveModelBackend(db, secrets, draft, apiKey);
+    const id = handleSaveModelBackend(db, secrets, draft, apiKey);
 
     // ID is a valid UUID
     expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
@@ -148,5 +120,30 @@ describe("saveModelBackend IPC handler", () => {
     const backend = db.getModelBackend(id);
     expect(backend).toBeDefined();
     expect(backend?.id).toBe(id);
+  });
+
+  it("persists extra config and stores a JSON multi-part secret via Secrets", () => {
+    const id = handleSaveModelBackend(
+      db,
+      secrets,
+      { kind: "cloud", provider: "bedrock", baseUrl: null, protocol: "v1/messages",
+        model: "anthropic.claude-3-5-sonnet-20240620-v1:0",
+        extra: { region: "us-east-1" } },
+      JSON.stringify({ accessKeyId: "AKIA...", secretAccessKey: "shh" })
+    );
+    const saved = db.getModelBackend(id)!;
+    expect(saved.extra).toEqual({ region: "us-east-1" });
+    expect(saved.secretRef).toBe(`backend:${id}`);
+    // Secret is retrievable and NOT in the DB row (only the ref is)
+    expect(JSON.parse(secrets.get(saved.secretRef!)!)).toEqual({ accessKeyId: "AKIA...", secretAccessKey: "shh" });
+  });
+
+  it("stores no secretRef when no secret provided", () => {
+    const id = handleSaveModelBackend(
+      db,
+      secrets,
+      { kind: "llamacpp", provider: null, baseUrl: "http://127.0.0.1:8080/v1",
+        protocol: "v1/chat/completions", model: "qwen2.5-1.5b" }, undefined);
+    expect(db.getModelBackend(id)?.secretRef).toBeNull();
   });
 });

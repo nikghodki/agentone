@@ -48,6 +48,47 @@ export function createAdapter(frameworkId: string, secrets: Secrets): FrameworkA
   );
 }
 
+/**
+ * Handler for save-model-backend IPC call.
+ * Persists a model backend configuration with optional secret (plain key or JSON credentials).
+ */
+export function handleSaveModelBackend(
+  db: Database,
+  secrets: Secrets,
+  draft: {
+    kind: string;
+    provider: string | null;
+    baseUrl: string | null;
+    protocol: string;
+    model: string;
+    extra?: Record<string, unknown> | null;
+  },
+  secret?: string
+): string {
+  const id = randomUUID();
+  let secretRef: string | null = null;
+
+  // If secret is provided and non-empty, store it securely (never log it)
+  if (secret && secret.trim() !== "") {
+    secretRef = `backend:${id}`;
+    secrets.set(secretRef, secret);
+  }
+
+  // Save the model backend config
+  db.saveModelBackend({
+    id,
+    kind: draft.kind as any,
+    provider: draft.provider,
+    baseUrl: draft.baseUrl,
+    protocol: draft.protocol as any,
+    model: draft.model,
+    secretRef,
+    extra: draft.extra ?? null,
+  });
+
+  return id;
+}
+
 export function registerIpcHandlers(db: Database, rateLimiter: RateLimiter, secrets: Secrets) {
   const paths = getAppPaths();
 
@@ -252,30 +293,17 @@ export function registerIpcHandlers(db: Database, rateLimiter: RateLimiter, secr
     "save-model-backend",
     (
       _e,
-      draft: { kind: string; provider: string | null; baseUrl: string | null; protocol: string; model: string },
-      apiKey?: string
+      draft: {
+        kind: string;
+        provider: string | null;
+        baseUrl: string | null;
+        protocol: string;
+        model: string;
+        extra?: Record<string, unknown> | null;
+      },
+      secret?: string
     ): string => {
-      const id = randomUUID();
-      let secretRef: string | null = null;
-
-      // If apiKey is provided and non-empty, store it securely
-      if (apiKey && apiKey.trim() !== "") {
-        secretRef = `backend:${id}`;
-        secrets.set(secretRef, apiKey);
-      }
-
-      // Save the model backend config (never log the apiKey)
-      db.saveModelBackend({
-        id,
-        kind: draft.kind as any,
-        provider: draft.provider,
-        baseUrl: draft.baseUrl,
-        protocol: draft.protocol as any,
-        model: draft.model,
-        secretRef,
-      });
-
-      return id;
+      return handleSaveModelBackend(db, secrets, draft, secret);
     }
   );
 }
