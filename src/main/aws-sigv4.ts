@@ -45,6 +45,12 @@ export function signRequestV4(params: SignRequestV4Params): Record<string, strin
   const amzDate = headers["x-amz-date"] || toAmzDate(now);
   const date = amzDate.substring(0, 8); // YYYYMMDD
 
+  // Build case-insensitive lookup map
+  const headerLookup = new Map<string, string>();
+  for (const [key, value] of Object.entries(headers)) {
+    headerLookup.set(key.toLowerCase(), value);
+  }
+
   // Prepare headers for signing (lowercase keys, sorted)
   const signedHeadersList = Object.keys(headers)
     .map((k) => k.toLowerCase())
@@ -65,8 +71,10 @@ export function signRequestV4(params: SignRequestV4Params): Record<string, strin
     .map((key) => {
       const value = key === "x-amz-security-token" && sessionToken
         ? sessionToken
-        : headers[key] || headers[key.toLowerCase()] || "";
-      return `${key}:${value.trim()}`;
+        : headerLookup.get(key) || "";
+      // Trim and collapse internal whitespace per SigV4 spec
+      const normalizedValue = value.trim().replace(/ +/g, " ");
+      return `${key}:${normalizedValue}`;
     })
     .join("\n") + "\n";
 

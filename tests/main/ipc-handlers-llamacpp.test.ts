@@ -7,7 +7,7 @@ describe("llama.cpp integration in IPC handlers", () => {
       ensureInstalled: vi.fn().mockResolvedValue(undefined),
       ensureModel: vi.fn().mockResolvedValue("/models/m.gguf"),
       start: vi.fn().mockResolvedValue(undefined),
-      getBaseUrl: () => "http://127.0.0.1:8123/v1",
+      getBaseUrl: () => "http://127.0.0.1:8123",
       stop: vi.fn(),
     };
     const backend = { id: "x", kind: "llamacpp", provider: null, baseUrl: null,
@@ -16,7 +16,7 @@ describe("llama.cpp integration in IPC handlers", () => {
     expect(mgr.ensureInstalled).toHaveBeenCalled();
     expect(mgr.ensureModel).toHaveBeenCalled();
     expect(mgr.start).toHaveBeenCalledWith("/models/m.gguf");
-    expect(out.baseUrl).toBe("http://127.0.0.1:8123/v1");
+    expect(out.baseUrl).toBe("http://127.0.0.1:8123");
   });
 
   it("shutdownServices stops a registered llama.cpp manager", () => {

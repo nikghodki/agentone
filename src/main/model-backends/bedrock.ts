@@ -54,15 +54,27 @@ export class BedrockBackend implements ModelBackend {
     const path = `/model/${encodedModel}/invoke`;
     const url = `https://${host}${path}`;
 
+    // Extract system messages and hoist to top-level system field
+    const systemMessages = messages.filter((m) => m.role === "system");
+    const nonSystemMessages = messages.filter((m) => m.role !== "system");
+    const systemPrompt = systemMessages.map((m) => m.content).join("\n");
+
     // Build Anthropic-on-Bedrock request body
-    const body = JSON.stringify({
+    const bodyObj: any = {
       anthropic_version: "bedrock-2023-05-31",
       max_tokens: 1024,
-      messages: messages.map((m) => ({
+      messages: nonSystemMessages.map((m) => ({
         role: m.role,
         content: m.content,
       })),
-    });
+    };
+
+    // Only include system field if there are system messages
+    if (systemPrompt) {
+      bodyObj.system = systemPrompt;
+    }
+
+    const body = JSON.stringify(bodyObj);
 
     // Create headers to sign
     const now = new Date();

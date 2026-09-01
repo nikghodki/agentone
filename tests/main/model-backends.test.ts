@@ -592,4 +592,38 @@ describe("BedrockBackend", () => {
     expect(out).toBe("4");
     expect(tokens).toEqual(["4"]);   // non-streaming: single onToken call
   });
+
+  it("Bedrock backend hoists system messages to top-level system field", async () => {
+    const calls: any[] = [];
+    const fakeFetch = async (url: string, opts: any) => {
+      calls.push({ url, opts });
+      return {
+        ok: true,
+        json: async () => ({ content: [{ type: "text", text: "ok" }] }),
+      } as any;
+    };
+    const secrets = { get: () => JSON.stringify({ accessKeyId: "AKID", secretAccessKey: "sk" }) } as any;
+    const cfg = {
+      id: "b",
+      kind: "cloud",
+      provider: "bedrock",
+      baseUrl: null,
+      protocol: "v1/messages",
+      model: "anthropic.claude-3-5-sonnet-20240620-v1:0",
+      secretRef: "backend:b",
+      extra: { region: "us-east-1" }
+    };
+    const backend = createBackend(cfg as any, secrets, fakeFetch as any);
+
+    await backend.chat([
+      { role: "system", content: "You are helpful" },
+      { role: "user", content: "hi" }
+    ], () => {});
+
+    const requestBody = JSON.parse(calls[0].opts.body);
+    expect(requestBody.system).toBe("You are helpful");
+    expect(requestBody.messages).toHaveLength(1);
+    expect(requestBody.messages[0].role).toBe("user");
+    expect(requestBody.messages).not.toContainEqual(expect.objectContaining({ role: "system" }));
+  });
 });

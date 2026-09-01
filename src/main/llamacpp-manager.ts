@@ -33,6 +33,7 @@ export class LlamaCppManager {
   private execFileFn: typeof execFile;
   private statSyncFn: (p: string) => { size: number };
   private process: ChildProcess | null = null;
+  private resolvedBinaryPath: string | null = null;
 
   constructor(installDir: string, opts?: LlamaCppOptions) {
     this.installDir = installDir;
@@ -55,14 +56,20 @@ export class LlamaCppManager {
   }
 
   getBaseUrl(): string {
-    return `http://127.0.0.1:${this.port}/v1`;
+    return `http://127.0.0.1:${this.port}`;
   }
 
   async ensureInstalled(onProgress: (pct: number) => void): Promise<void> {
     const llamaServerPath = path.join(this.installDir, "llama-server");
 
-    // Skip if already exists
+    // Skip if already exists (check both direct and resolved paths)
     if (this.existsFn(llamaServerPath)) {
+      this.resolvedBinaryPath = llamaServerPath;
+      return;
+    }
+
+    // If we already resolved a nested path, skip
+    if (this.resolvedBinaryPath && this.existsFn(this.resolvedBinaryPath)) {
       return;
     }
 
@@ -96,8 +103,15 @@ export class LlamaCppManager {
       });
     });
 
+    // Resolve the binary path (may be nested)
+    const resolvedPath = this.findLlamaServer(this.installDir);
+    if (!resolvedPath) {
+      throw new Error("llama-server binary not found after extraction");
+    }
+    this.resolvedBinaryPath = resolvedPath;
+
     // Make executable
-    await this.fsOps.chmod(llamaServerPath, 0o755);
+    await this.fsOps.chmod(this.resolvedBinaryPath, 0o755);
 
     // Clean up zip
     try {
@@ -170,7 +184,10 @@ export class LlamaCppManager {
   }
 
   async start(modelPath: string): Promise<void> {
-    const llamaServerPath = path.join(this.installDir, "llama-server");
+    // Use resolved path if available, otherwise fallback to direct path
+    const llamaServerPath = this.resolvedBinaryPath || path.join(this.installDir, "llama-server");
+
+    let spawnError: Error | null = null;
 
     this.process = this.spawnFn(
       llamaServerPath,
@@ -184,7 +201,7 @@ export class LlamaCppManager {
     );
 
     this.process.on("error", (err) => {
-      throw new Error(`Failed to start llama-server: ${err.message}`);
+      spawnError = new Error(`Failed to start llama-server: ${err.message}`);
     });
 
     if (this.process.stdout) {
@@ -196,10 +213,20 @@ export class LlamaCppManager {
 
     // Poll for readiness
     for (let i = 0; i < 40; i++) {
+      // Check if spawn failed
+      if (spawnError) {
+        throw spawnError;
+      }
+
       if (await this.isReady()) {
         return;
       }
       await new Promise((r) => setTimeout(r, 500));
+    }
+
+    // Final check for spawn error
+    if (spawnError) {
+      throw spawnError;
     }
 
     throw new Error("llama-server did not become ready within timeout");
@@ -239,6 +266,36 @@ export class LlamaCppManager {
 
       this.process = null;
     }
+  }
+
+  /**
+   * Recursively searches for llama-server binary in the install directory.
+   * Returns the absolute path if found, null otherwise.
+   */
+  private findLlamaServer(dir: string, depth: number = 0): string | null {
+    // Limit recursion depth to avoid infinite loops
+    if (depth > 10) return null;
+
+    // Check direct path first
+    const directPath = path.join(dir, "llama-server");
+    if (this.existsFn(directPath)) {
+      return directPath;
+    }
+
+    // Try common nested locations
+    const commonPaths = [
+      path.join(dir, "build", "bin", "llama-server"),
+      path.join(dir, "bin", "llama-server"),
+      path.join(dir, "build", "llama-server")
+    ];
+
+    for (const p of commonPaths) {
+      if (this.existsFn(p)) {
+        return p;
+      }
+    }
+
+    return null;
   }
 
   private async downloadFile(
