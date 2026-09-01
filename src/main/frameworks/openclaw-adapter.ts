@@ -613,8 +613,15 @@ export class OpenclawAdapter implements FrameworkAdapter {
       const status = columns[options.statusCol + 1]; // +1 because split produces empty first element
       const name = columns[options.nameCol + 1];
 
-      // Skip if status column is empty (continuation row) or not ready
-      if (!status || !options.readyIndicators.some(indicator => status.includes(indicator))) {
+      // Skip if status column is empty (continuation row) or not ready.
+      // Use exact/prefix match (NOT substring) so a future status like
+      // "not ready" / "unready" can't falsely satisfy the "ready" indicator.
+      if (
+        !status ||
+        !options.readyIndicators.some(
+          indicator => status === indicator || status.startsWith(indicator)
+        )
+      ) {
         continue;
       }
 

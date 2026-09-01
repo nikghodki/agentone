@@ -958,6 +958,36 @@ Skills (2/3 ready)
       expect(capabilities.find(c => c.name === "1password")).toBeUndefined();
     });
 
+    it("F1: a 'not ready' status is NOT falsely matched as ready (substring guard)", async () => {
+      const mockExecWithArgs = vi.fn()
+        .mockResolvedValueOnce({
+          // Hypothetical status "not ready" must be excluded even though it
+          // contains the substring "ready" — parser uses exact/prefix match.
+          stdout: `
+Skills (1/2 ready)
+┌───────────┬──────────────────────────┬─────────────────────────────────────┬────────────────────┐
+│ Status    │ Skill                    │ Description                         │ Source             │
+├───────────┼──────────────────────────┼─────────────────────────────────────┼────────────────────┤
+│ ✓ ready   │ ready-skill              │ A ready skill                       │ openclaw-bundled   │
+│ not ready │ pending-skill            │ Not yet ready                       │ openclaw-bundled   │
+`,
+          stderr: "",
+        })
+        .mockResolvedValueOnce({
+          stdout: "No OpenClaw-managed MCP servers configured in /Users/test/.openclaw/openclaw.json.",
+          stderr: "",
+        });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      const capabilities = await adapter.listCapabilities();
+
+      // Only the genuinely-ready skill; "not ready" is excluded
+      expect(capabilities.filter(c => c.type === "skill")).toHaveLength(1);
+      expect(capabilities.find(c => c.name === "ready-skill")).toBeDefined();
+      expect(capabilities.find(c => c.name === "pending-skill")).toBeUndefined();
+    });
+
     it("F2: handles 'No OpenClaw-managed MCP servers' message", async () => {
       const mockExecWithArgs = vi.fn()
         .mockResolvedValueOnce({
