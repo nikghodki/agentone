@@ -253,14 +253,21 @@ describe("ZeptoclawAdapter", () => {
       expect(mockProcessManager.stop).toHaveBeenCalledOnce();
     });
 
-    it("status() returns healthy when version check succeeds", async () => {
+    it("status() returns healthy when version check succeeds and process is running", async () => {
       const mockExec = vi.fn().mockResolvedValue({
         stdout: "zeptoclaw 0.9.2\n",
         stderr: "",
       });
 
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn().mockReturnValue(true),
+        getLastError: vi.fn().mockReturnValue(null),
+      };
+
       const mockProbe = vi.fn().mockResolvedValue(true);
-      adapter = new ZeptoclawAdapter(tempDir, mockProbe, null as any, null as any, mockExec);
+      adapter = new ZeptoclawAdapter(tempDir, mockProbe, mockProcessManager as any, null as any, mockExec);
 
       const result = await adapter.status();
 
@@ -277,6 +284,55 @@ describe("ZeptoclawAdapter", () => {
       const result = await adapter.status();
 
       expect(result).toContain("unhealthy");
+    });
+
+    it("status() returns unhealthy when process is not running", async () => {
+      const mockExec = vi.fn().mockResolvedValue({
+        stdout: "zeptoclaw 0.9.2\n",
+        stderr: "",
+      });
+
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn().mockReturnValue(false),
+        getLastError: vi.fn().mockReturnValue(null),
+      };
+
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(tempDir, mockProbe, mockProcessManager as any, null as any, mockExec);
+
+      const result = await adapter.status();
+
+      // Should report unhealthy even though version check would pass
+      expect(result).toContain("unhealthy");
+      expect(result).toContain("process not running");
+      // Version check should NOT have been called (short-circuit on liveness check)
+      expect(mockExec).not.toHaveBeenCalled();
+    });
+
+    it("status() includes error message when process failed to spawn", async () => {
+      const mockExec = vi.fn().mockResolvedValue({
+        stdout: "zeptoclaw 0.9.2\n",
+        stderr: "",
+      });
+
+      const spawnError = new Error("ENOENT: command not found");
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn().mockReturnValue(false),
+        getLastError: vi.fn().mockReturnValue(spawnError),
+      };
+
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(tempDir, mockProbe, mockProcessManager as any, null as any, mockExec);
+
+      const result = await adapter.status();
+
+      expect(result).toContain("unhealthy");
+      expect(result).toContain("process not running");
+      expect(result).toContain("ENOENT");
     });
   });
 

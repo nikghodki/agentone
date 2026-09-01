@@ -159,21 +159,34 @@ export function registerIpcHandlers(db: Database, rateLimiter: RateLimiter, secr
         await adapter.configure(backend);
         await adapter.start();
 
-        // Poll status until healthy
-        const timeoutMs = 10000; // 10 second timeout
-        const startTime = Date.now();
-        while (Date.now() - startTime < timeoutMs) {
-          const status = await adapter.status();
-          if (status === "healthy") {
-            break;
+        // Poll status until healthy using consolidated readiness check
+        // This now incorporates process liveness (Fix 2)
+        const processManager = (adapter as any).processManager;
+        if (processManager && processManager.waitUntilReady) {
+          // Use ProcessManager's waitUntilReady for consistent polling
+          await processManager.waitUntilReady(
+            async () => {
+              const status = await adapter.status();
+              return status === "healthy";
+            },
+            { timeoutMs: 10000, intervalMs: 500 }
+          );
+        } else {
+          // Fallback for adapters without ProcessManager
+          const timeoutMs = 10000;
+          const startTime = Date.now();
+          while (Date.now() - startTime < timeoutMs) {
+            const status = await adapter.status();
+            if (status === "healthy") {
+              break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 500));
           }
-          await new Promise((resolve) => setTimeout(resolve, 500));
-        }
-
-        // Final status check
-        const finalStatus = await adapter.status();
-        if (finalStatus !== "healthy") {
-          throw new Error(`Adapter failed to reach healthy status: ${finalStatus}`);
+          // Final status check
+          const finalStatus = await adapter.status();
+          if (finalStatus !== "healthy") {
+            throw new Error(`Adapter failed to reach healthy status: ${finalStatus}`);
+          }
         }
 
         // Create orchestrator

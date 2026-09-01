@@ -10,6 +10,7 @@ import { spawn, ChildProcess, SpawnOptions } from "child_process";
 export class ProcessManager {
   private child: ChildProcess | null = null;
   private running = false;
+  private lastError: Error | null = null;
   private spawnFn: typeof spawn;
 
   constructor(spawnFn: typeof spawn = spawn) {
@@ -37,10 +38,19 @@ export class ProcessManager {
 
     this.child = this.spawnFn(cmd, args, spawnOpts);
     this.running = true;
+    this.lastError = null;
 
     // Mark as not running when process exits
     this.child.on("exit", () => {
       this.running = false;
+      this.child = null;
+    });
+
+    // Handle spawn errors (ENOENT, EACCES, etc.) to prevent uncaught exception crash
+    this.child.on("error", (err: Error) => {
+      this.running = false;
+      this.lastError = err;
+      this.child = null;
     });
   }
 
@@ -85,10 +95,20 @@ export class ProcessManager {
   }
 
   /**
+   * Get the last spawn error, if any.
+   */
+  getLastError(): Error | null {
+    return this.lastError;
+  }
+
+  /**
    * Get the child process instance (for accessing stdin/stdout).
    * Returns null if no process is running.
    */
   getChild(): ChildProcess | null {
+    if (!this.running) {
+      return null;
+    }
     return this.child;
   }
 

@@ -161,22 +161,35 @@ export class CapabilityOrchestrator {
    * Supports:
    * - `<name>` → defaults to skill type
    * - `<type>:<name>` → explicit type (skill|mcp|plugin)
+   *
+   * Type validation: Only "skill", "mcp", and "plugin" are valid.
+   * If an invalid type is provided, defaults to "skill".
    */
   private parseGap(gapString: string): ParsedGap {
+    const validTypes = ["skill", "mcp", "plugin"];
+
     const parts = gapString.split(":");
     if (parts.length === 1) {
       // No type prefix, default to skill
       return { type: "skill", name: parts[0] };
     } else if (parts.length === 2) {
-      // Type prefix provided
+      // Type prefix provided - validate it
       const type = parts[0];
       const name = parts[1];
-      return { type, name };
+      // If type is not valid, default to skill
+      return {
+        type: validTypes.includes(type) ? type : "skill",
+        name
+      };
     } else {
       // More than one colon, treat everything after first colon as name
       const type = parts[0];
       const name = parts.slice(1).join(":");
-      return { type, name };
+      // If type is not valid, default to skill
+      return {
+        type: validTypes.includes(type) ? type : "skill",
+        name
+      };
     }
   }
 

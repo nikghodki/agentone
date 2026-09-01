@@ -28,4 +28,27 @@ describe("ProcessManager", () => {
     pm.start("x", [], {}); await pm.stop();
     expect(child.kill).toHaveBeenCalled(); expect(pm.isRunning()).toBe(false);
   });
+  it("captures spawn error and sets not-running without throwing uncaught", () => {
+    const child = fakeChild(); const pm = new ProcessManager(vi.fn(() => child) as any);
+    pm.start("x", [], {});
+    expect(pm.isRunning()).toBe(true);
+    // Emit error (simulating ENOENT, EACCES, etc.)
+    const testError = new Error("ENOENT: command not found");
+    child.emit("error", testError);
+    // Should be marked not-running
+    expect(pm.isRunning()).toBe(false);
+    // Should store the error
+    expect(pm.getLastError()).toBe(testError);
+    // Should null out child
+    expect(pm.getChild()).toBe(null);
+  });
+  it("getChild returns null when not running", () => {
+    const child = fakeChild(); const pm = new ProcessManager(vi.fn(() => child) as any);
+    pm.start("x", [], {});
+    expect(pm.getChild()).toBe(child);
+    // Simulate exit
+    child.emit("exit", 0);
+    expect(pm.isRunning()).toBe(false);
+    expect(pm.getChild()).toBe(null);
+  });
 });

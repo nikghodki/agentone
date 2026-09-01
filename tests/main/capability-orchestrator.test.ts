@@ -424,4 +424,95 @@ describe("CapabilityOrchestrator", () => {
       expect(statusCalls.length).toBe(1);
     });
   });
+
+  describe("parseGap() type validation", () => {
+    it("defaults to skill when no type prefix provided", async () => {
+      adapter.capabilityGapOnFirstTask = "web-search";
+      adapter.shouldRequireRestart = false;
+
+      const tokens: string[] = [];
+      const statuses: string[] = [];
+
+      await orchestrator.runTask(
+        "Search the web",
+        (token) => tokens.push(token),
+        (status) => statuses.push(status)
+      );
+
+      // Verify it was installed as skill type
+      expect(db.recordedCapabilities[0].type).toBe("skill");
+    });
+
+    it("accepts valid type prefix (mcp)", async () => {
+      adapter.capabilityGaps = ["mcp:database"];
+      adapter.shouldRequireRestart = false;
+
+      const tokens: string[] = [];
+      const statuses: string[] = [];
+
+      await orchestrator.runTask(
+        "Query database",
+        (token) => tokens.push(token),
+        (status) => statuses.push(status)
+      );
+
+      // Verify it was installed as mcp type
+      expect(db.recordedCapabilities[0].type).toBe("mcp");
+      expect(db.recordedCapabilities[0].name).toBe("database");
+    });
+
+    it("accepts valid type prefix (plugin)", async () => {
+      adapter.capabilityGaps = ["plugin:custom-tool"];
+      adapter.shouldRequireRestart = false;
+
+      const tokens: string[] = [];
+      const statuses: string[] = [];
+
+      await orchestrator.runTask(
+        "Use custom tool",
+        (token) => tokens.push(token),
+        (status) => statuses.push(status)
+      );
+
+      // Verify it was installed as plugin type
+      expect(db.recordedCapabilities[0].type).toBe("plugin");
+      expect(db.recordedCapabilities[0].name).toBe("custom-tool");
+    });
+
+    it("defaults to skill when invalid type prefix provided", async () => {
+      adapter.capabilityGaps = ["invalid-type:my-capability"];
+      adapter.shouldRequireRestart = false;
+
+      const tokens: string[] = [];
+      const statuses: string[] = [];
+
+      await orchestrator.runTask(
+        "Use capability",
+        (token) => tokens.push(token),
+        (status) => statuses.push(status)
+      );
+
+      // Verify it defaulted to skill type (not "invalid-type")
+      expect(db.recordedCapabilities[0].type).toBe("skill");
+      expect(db.recordedCapabilities[0].name).toBe("my-capability");
+    });
+
+    it("handles colons in capability name correctly", async () => {
+      adapter.capabilityGaps = ["mcp:scope:my-server"];
+      adapter.shouldRequireRestart = false;
+
+      const tokens: string[] = [];
+      const statuses: string[] = [];
+
+      await orchestrator.runTask(
+        "Use scoped MCP",
+        (token) => tokens.push(token),
+        (status) => statuses.push(status)
+      );
+
+      // Verify type is mcp and name includes the colon
+      expect(db.recordedCapabilities[0].type).toBe("mcp");
+      expect(db.recordedCapabilities[0].name).toBe("scope:my-server");
+    });
+  });
 });

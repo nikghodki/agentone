@@ -240,10 +240,23 @@ export class ZeptoclawAdapter implements FrameworkAdapter {
   }
 
   /**
-   * Check if zeptoclaw is healthy via version check.
+   * Check if zeptoclaw is healthy via version check AND process liveness.
    * Per verified doc: `zeptoclaw --version` returns "zeptoclaw 0.9.2"
+   *
+   * IMPORTANT: Also checks that the spawned process is actually running.
+   * A dead/failed start() should report unhealthy even if the binary exists.
    */
   async status(): Promise<string> {
+    // First check process liveness
+    if (!this.processManager.isRunning()) {
+      const lastError = this.processManager.getLastError();
+      if (lastError) {
+        return `unhealthy: process not running (${lastError.message})`;
+      }
+      return "unhealthy: process not running";
+    }
+
+    // Then check binary availability
     try {
       const result = await this.execFn("zeptoclaw --version");
       if (result.stdout.includes("zeptoclaw")) {
