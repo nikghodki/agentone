@@ -174,9 +174,14 @@ export class OpenclawAdapter implements FrameworkAdapter {
    *   - plugins.entries.ollama.enabled: true
    *   - plugins.allow: ["ollama"]
    *
+   * CRITICAL: DEEP-MERGES with existing config to preserve install()'s work.
+   * install() runs `openclaw doctor --fix` (config migration) and
+   * `openclaw plugins install ollama`, which populate meta.lastTouchedVersion,
+   * gateway config, etc. We must NOT clobber those keys.
+   *
    * SECURITY: Never writes secrets - those are injected via env at start (Task 2).
    * Uses JSON.stringify for escaping (handles special characters automatically).
-   * Idempotent (overwrites cleanly).
+   * Idempotent (deep-merge preserves unrelated keys).
    */
   async configure(backend: ModelBackendConfig): Promise<void> {
     // Store backend for use in start() (Task 2)
@@ -185,11 +190,55 @@ export class OpenclawAdapter implements FrameworkAdapter {
     // Ensure config directory exists
     await fs.mkdir(this.configDir, { recursive: true });
 
-    // Build the 3-part + plugin config structure
-    const config = this.buildOpenclawConfig(backend);
-
     const configPath = path.join(this.configDir, "openclaw.json");
-    await fs.writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
+
+    // Read existing config (preserve install/migration settings)
+    let existing: Record<string, unknown> = {};
+    try {
+      const existingContent = await fs.readFile(configPath, "utf-8");
+      existing = JSON.parse(existingContent);
+    } catch {
+      // File doesn't exist or is invalid, start fresh
+    }
+
+    // Build the 3-part + plugin config structure
+    const built = this.buildOpenclawConfig(backend);
+
+    // DEEP-MERGE: replace/merge ONLY the model-wiring keys, keep everything else
+    const builtAgents = built.agents as any;
+    const builtPlugins = built.plugins as any;
+    const existingAgents = existing.agents as any;
+    const existingPlugins = existing.plugins as any;
+
+    const merged = {
+      ...existing,
+      // PART 1: Replace models.providers (model backend config)
+      models: built.models,
+      // PART 2+3: Merge agents.defaults (preserve other agent config)
+      agents: {
+        ...(existingAgents || {}),
+        defaults: {
+          ...(existingAgents?.defaults || {}),
+          models: builtAgents.defaults.models,
+          model: builtAgents.defaults.model,
+          modelPolicy: builtAgents.defaults.modelPolicy,
+        },
+      },
+      // PART 4: Merge plugins (preserve existing plugins + add ollama)
+      plugins: {
+        ...(existingPlugins || {}),
+        entries: {
+          ...(existingPlugins?.entries || {}),
+          ...builtPlugins.entries,
+        },
+        allow: Array.from(new Set([
+          ...(existingPlugins?.allow || []),
+          ...builtPlugins.allow,
+        ])),
+      },
+    };
+
+    await fs.writeFile(configPath, JSON.stringify(merged, null, 2), "utf-8");
   }
 
   /**

@@ -72,19 +72,48 @@ describe("OpenclawAdapter", () => {
       expect(config.plugins.allow).toContain("ollama");
     });
 
-    it("is idempotent - overwrites config cleanly", async () => {
+    it("preserves unrelated config keys (meta, gateway) when updating model", async () => {
       adapter = new OpenclawAdapter(tempDir);
 
-      const backend1: ModelBackendConfig = {
-        id: "ollama-1",
-        kind: "ollama",
-        provider: "ollama",
-        baseUrl: "http://localhost:11434/v1",
-        protocol: "v1/chat/completions",
-        model: "llama3.2:3b",
-        secretRef: null,
+      // Simulate an existing openclaw.json with unrelated keys from install/migration
+      const existingConfig = {
+        meta: {
+          lastTouchedVersion: "2026.8.1",
+          configVersion: "v2",
+        },
+        gateway: {
+          controlUi: {
+            port: 19000,
+          },
+        },
+        models: {
+          providers: {
+            ollama: {
+              api: "ollama",
+              baseUrl: "http://localhost:11434/v1",
+              models: [{ id: "llama3.2:3b", name: "Llama 3.2 3B" }],
+            },
+          },
+        },
+        agents: {
+          defaults: {
+            models: {
+              "ollama/llama3.2:3b": { alias: "Llama 3.2 3B (Local)" },
+            },
+            model: { primary: "ollama/llama3.2:3b" },
+            modelPolicy: { allow: ["ollama/llama3.2:3b"] },
+          },
+        },
+        plugins: {
+          entries: { ollama: { enabled: true } },
+          allow: ["ollama"],
+        },
       };
 
+      // Write initial config
+      await fs.writeFile(configPath, JSON.stringify(existingConfig, null, 2), "utf-8");
+
+      // Configure with a DIFFERENT backend/model
       const backend2: ModelBackendConfig = {
         id: "ollama-2",
         kind: "ollama",
@@ -95,20 +124,22 @@ describe("OpenclawAdapter", () => {
         secretRef: null,
       };
 
-      // First configure
-      await adapter.configure(backend1);
-      let configContent = await fs.readFile(configPath, "utf-8");
-      let config = JSON.parse(configContent);
-      expect(config.models.providers.ollama.models[0].id).toBe("llama3.2:3b");
-      expect(config.agents.defaults.model.primary).toBe("ollama/llama3.2:3b");
-
-      // Second configure - should overwrite
       await adapter.configure(backend2);
-      configContent = await fs.readFile(configPath, "utf-8");
-      config = JSON.parse(configContent);
+
+      const configContent = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+
+      // (a) Model config was UPDATED
       expect(config.models.providers.ollama.models[0].id).toBe("mistral:latest");
       expect(config.agents.defaults.model.primary).toBe("ollama/mistral:latest");
-      expect(configContent).not.toContain("llama3.2:3b");
+
+      // (b) Unrelated keys are STILL PRESENT
+      expect(config.meta).toBeDefined();
+      expect(config.meta.lastTouchedVersion).toBe("2026.8.1");
+      expect(config.meta.configVersion).toBe("v2");
+      expect(config.gateway).toBeDefined();
+      expect(config.gateway.controlUi).toBeDefined();
+      expect(config.gateway.controlUi.port).toBe(19000);
     });
 
     it("never writes secrets to config file", async () => {
