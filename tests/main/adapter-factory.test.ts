@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { ZeptoclawAdapter } from "../../src/main/frameworks/zeptoclaw-adapter";
 import { HermesAdapter } from "../../src/main/frameworks/hermes-adapter";
+import { OpenclawAdapter } from "../../src/main/frameworks/openclaw-adapter";
 import { Secrets } from "../../src/main/secrets";
 import { createAdapter } from "../../src/main/ipc-handlers";
 
@@ -33,17 +34,16 @@ describe("Adapter Factory", () => {
     expect(adapter).toBeInstanceOf(HermesAdapter);
   });
 
-  it("should throw clear error for unsupported framework 'openclaw'", () => {
+  it("should create OpenclawAdapter for frameworkId 'openclaw'", () => {
     const secrets = new Secrets(":memory:", mockEncryptor);
-    expect(() => createAdapter("openclaw", secrets)).toThrow(
-      'Framework "openclaw" is not yet supported. Only "zeptoclaw" and "hermes" are currently wired for deployment.'
-    );
+    const adapter = createAdapter("openclaw", secrets);
+    expect(adapter).toBeInstanceOf(OpenclawAdapter);
   });
 
   it("should throw clear error for unknown framework", () => {
     const secrets = new Secrets(":memory:", mockEncryptor);
-    expect(() => createAdapter("unknown-framework", secrets)).toThrow(
-      'Framework "unknown-framework" is not yet supported. Only "zeptoclaw" and "hermes" are currently wired for deployment.'
+    expect(() => createAdapter("bogus", secrets)).toThrow(
+      'Framework "bogus" is not yet supported. Only "zeptoclaw", "hermes", and "openclaw" are currently wired for deployment.'
     );
   });
 });
