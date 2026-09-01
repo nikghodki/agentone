@@ -312,6 +312,127 @@ describe("OpenclawAdapter", () => {
   });
 
   // ========================================================================
+  // TASK 7 (Final Review): Injectable node22BinDir + case-insensitive status()
+  // ========================================================================
+
+  describe("injectable node22BinDir", () => {
+    it("uses custom node22BinDir in both PATH and binary resolution", async () => {
+      const customNode22BinDir = "/custom/node22/bin";
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "OK",
+        stderr: "",
+      });
+
+      // Pass custom node22BinDir as last constructor parameter
+      adapter = new OpenclawAdapter(
+        tempDir,
+        mockProbe,
+        mockExecWithArgs,
+        undefined,
+        undefined,
+        customNode22BinDir
+      );
+
+      await adapter.install();
+
+      // Verify both doctor and plugins commands used the custom dir
+      const calls = mockExecWithArgs.mock.calls;
+      expect(calls.length).toBeGreaterThanOrEqual(2);
+
+      for (const call of calls) {
+        const binary = call[0];
+        const opts = call[2];
+
+        // Assert binary path uses custom dir
+        expect(binary).toBe(path.join(customNode22BinDir, "openclaw"));
+
+        // Assert PATH has custom dir as prefix
+        expect(opts.env.PATH).toContain(customNode22BinDir);
+        expect(opts.env.PATH.startsWith(customNode22BinDir)).toBe(true);
+
+        // Assert host node16 and ~/.local/bin are still excluded (Ruling O1)
+        expect(opts.env.PATH).not.toContain(".local/bin");
+        expect(opts.env.PATH).not.toBe(process.env.PATH);
+      }
+    });
+
+    it("respects OPENCLAW_NODE22_BIN_DIR env var when constructor param not set", async () => {
+      const envNode22BinDir = "/env/node22/bin";
+      const originalEnv = process.env.OPENCLAW_NODE22_BIN_DIR;
+      process.env.OPENCLAW_NODE22_BIN_DIR = envNode22BinDir;
+
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "OK",
+        stderr: "",
+      });
+
+      try {
+        // No node22BinDir param -> should use env var
+        adapter = new OpenclawAdapter(
+          tempDir,
+          mockProbe,
+          mockExecWithArgs,
+          undefined,
+          undefined,
+          undefined // no node22BinDir
+        );
+
+        await adapter.install();
+
+        // Verify env var was used
+        const call = mockExecWithArgs.mock.calls[0];
+        const binary = call[0];
+        expect(binary).toBe(path.join(envNode22BinDir, "openclaw"));
+      } finally {
+        // Restore original env
+        if (originalEnv === undefined) {
+          delete process.env.OPENCLAW_NODE22_BIN_DIR;
+        } else {
+          process.env.OPENCLAW_NODE22_BIN_DIR = originalEnv;
+        }
+      }
+    });
+
+    it("falls back to dev path when neither constructor param nor env var set", async () => {
+      const originalEnv = process.env.OPENCLAW_NODE22_BIN_DIR;
+      delete process.env.OPENCLAW_NODE22_BIN_DIR;
+
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "OK",
+        stderr: "",
+      });
+
+      try {
+        adapter = new OpenclawAdapter(
+          tempDir,
+          mockProbe,
+          mockExecWithArgs,
+          undefined,
+          undefined,
+          undefined // no node22BinDir
+        );
+
+        await adapter.install();
+
+        // Verify dev fallback was used (contains spike path)
+        const call = mockExecWithArgs.mock.calls[0];
+        const binary = call[0];
+        expect(binary).toContain("workspace/flashlearn/spikes/openclaw-test");
+      } finally {
+        // Restore original env
+        if (originalEnv === undefined) {
+          delete process.env.OPENCLAW_NODE22_BIN_DIR;
+        } else {
+          process.env.OPENCLAW_NODE22_BIN_DIR = originalEnv;
+        }
+      }
+    });
+  });
+
+  // ========================================================================
   // TASK 2: start/stop/status/sendTask/streamOutput
   // ========================================================================
 
@@ -398,7 +519,8 @@ describe("OpenclawAdapter", () => {
   describe("status()", () => {
     it("returns healthy when binary is ready (version check passes)", async () => {
       const mockExecWithArgs = vi.fn().mockResolvedValue({
-        stdout: "openclaw version 2026.8.1\n",
+        // FIX 2: Use real output with capital C to test case-insensitive check
+        stdout: "OpenClaw 2026.8.1\n",
         stderr: "",
       });
 

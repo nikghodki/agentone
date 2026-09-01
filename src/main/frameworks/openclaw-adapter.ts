@@ -60,6 +60,7 @@ export class OpenclawAdapter implements FrameworkAdapter {
   private processManager: ProcessManager;
   private secrets: Secrets | null;
   private currentBackend: ModelBackendConfig | null = null;
+  private node22BinDir: string;
 
   /**
    * @param configDir - Directory where openclaw.json lives (injectable for tests)
@@ -67,19 +68,51 @@ export class OpenclawAdapter implements FrameworkAdapter {
    * @param execWithArgs - Function to execute commands with arg array (injectable for tests)
    * @param processManager - ProcessManager for spawning child processes (injectable for tests)
    * @param secrets - Secrets store for API keys (injectable for tests)
+   * @param node22BinDir - Node 22 bin directory (injectable for tests/production)
    */
   constructor(
     configDir: string = path.join(os.homedir(), ".openclaw"),
     probe: (binaryName: string) => Promise<boolean> = defaultProbe,
     execWithArgs?: ExecWithArgsFunction,
     processManager?: ProcessManager,
-    secrets?: Secrets | null
+    secrets?: Secrets | null,
+    node22BinDir?: string
   ) {
     this.configDir = configDir;
     this.probe = probe;
     this.execWithArgsFn = execWithArgs || this.defaultExecWithArgs.bind(this);
     this.processManager = processManager || new ProcessManager();
     this.secrets = secrets !== undefined ? secrets : null;
+
+    // FIX 1: Resolve Node-22 bin directory from (1) constructor param, (2) env var, (3) dev fallback
+    this.node22BinDir = this.resolveNode22BinDir(node22BinDir);
+  }
+
+  /**
+   * Resolve Node-22 bin directory in priority order:
+   * 1. Explicit constructor parameter (for tests and production injection)
+   * 2. Environment variable OPENCLAW_NODE22_BIN_DIR
+   * 3. Dev-only fallback to spike nvm path
+   */
+  private resolveNode22BinDir(explicitPath?: string): string {
+    // Priority 1: Explicit constructor parameter
+    if (explicitPath) {
+      return explicitPath;
+    }
+
+    // Priority 2: Environment variable
+    const envPath = process.env.OPENCLAW_NODE22_BIN_DIR;
+    if (envPath) {
+      return envPath;
+    }
+
+    // Priority 3: Dev-only fallback
+    // TODO(prod): production must bundle Node 22 and inject node22BinDir (constructor) or set OPENCLAW_NODE22_BIN_DIR. This dev fallback only works on the original dev box.
+    const homeDir = os.homedir();
+    return path.join(
+      homeDir,
+      "workspace/flashlearn/spikes/openclaw-test/.nvm/versions/node/v22.23.2/bin"
+    );
   }
 
   /**
@@ -102,39 +135,24 @@ export class OpenclawAdapter implements FrameworkAdapter {
    * Build sandboxed environment for openclaw CLI calls.
    * Per Ruling O1: Explicit PATH with Node 22, EXCLUDES ~/.local/bin.
    *
-   * Per spike doc: Use nvm's Node 22 from the spike directory.
-   * Format: export NVM_DIR="$(pwd)/.nvm" && source "$NVM_DIR/nvm.sh" && nvm use 22
-   *
-   * For production use, we construct an explicit PATH with the nvm Node 22 bin.
+   * Uses the resolved node22BinDir (injectable, env var, or dev fallback).
    */
   private buildSandboxedEnv(): Record<string, string> {
     const homeDir = os.homedir();
 
-    // Per spike: nvm Node 22 is at /Users/nikhil/workspace/flashlearn/spikes/openclaw-test/.nvm/versions/node/v22.23.2/bin
-    // For the adapter, we'll use the same nvm installation from the spike directory
-    const spikeNvmNodePath = path.join(
-      homeDir,
-      "workspace/flashlearn/spikes/openclaw-test/.nvm/versions/node/v22.23.2/bin"
-    );
-
     return {
       HOME: homeDir,
-      // CRITICAL: Explicit PATH with Node 22, NO ~/.local/bin (H1 guardrail)
-      PATH: `${spikeNvmNodePath}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`,
+      // CRITICAL: Explicit PATH with Node 22, NO ~/.local/bin (Ruling O1 guardrail)
+      PATH: `${this.node22BinDir}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`,
     };
   }
 
   /**
    * Get the absolute path to the openclaw binary.
-   * Uses the nvm Node 22 installation from the spike directory.
+   * Uses the resolved node22BinDir (injectable, env var, or dev fallback).
    */
   private getOpenclawBinary(): string {
-    const homeDir = os.homedir();
-    const spikeNvmNodePath = path.join(
-      homeDir,
-      "workspace/flashlearn/spikes/openclaw-test/.nvm/versions/node/v22.23.2/bin"
-    );
-    return path.join(spikeNvmNodePath, "openclaw");
+    return path.join(this.node22BinDir, "openclaw");
   }
 
   /**
@@ -377,7 +395,7 @@ export class OpenclawAdapter implements FrameworkAdapter {
 
   /**
    * Check if openclaw is ready to run tasks.
-   * Per verified doc: `openclaw --version` returns "openclaw version 2026.8.1..."
+   * Per verified doc: `openclaw --version` returns "OpenClaw 2026.8.1..." (capital C)
    *
    * Status reflects "ready to run tasks" rather than a long-lived process.
    * Uses absolute path to openclaw binary for consistency.
@@ -386,7 +404,8 @@ export class OpenclawAdapter implements FrameworkAdapter {
     try {
       const openclawBinary = this.getOpenclawBinary();
       const result = await this.execWithArgsFn(openclawBinary, ["--version"]);
-      if (result.stdout.includes("openclaw")) {
+      // FIX 2: Case-insensitive check (real output is "OpenClaw" with capital C)
+      if (result.stdout.toLowerCase().includes("openclaw")) {
         return "healthy";
       }
       return "unhealthy: unexpected version output";
