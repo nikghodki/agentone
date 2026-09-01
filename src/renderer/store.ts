@@ -25,6 +25,7 @@ interface ModelBackendDraft {
   baseUrl: string | null;
   protocol: ModelProtocol;
   model: string;
+  extra?: Record<string, unknown> | null;
 }
 
 interface AppState {
@@ -101,6 +102,7 @@ export const useAppStore = create<AppState>((set) => ({
     baseUrl: null,
     protocol: "v1/chat/completions",
     model: "",
+    extra: null,
   },
   modelBackendId: null,
 

@@ -2,6 +2,8 @@ import type { ModelBackend, ModelBackendConfig } from "../../shared/v2-types";
 import type { Secrets } from "../secrets";
 import { OpenAICompatibleBackend } from "./openai-compatible";
 import { AnthropicMessagesBackend } from "./anthropic-messages";
+import { AzureOpenAIBackend } from "./azure-openai";
+import { BedrockBackend } from "./bedrock";
 
 /**
  * Creates a ModelBackend instance based on the protocol specified in the config.
@@ -16,11 +18,21 @@ export function createBackend(cfg: ModelBackendConfig, secrets: Secrets, fetchFn
   // Resolve API key from secrets if secretRef is provided
   const apiKey = cfg.secretRef ? secrets.get(cfg.secretRef) : null;
 
+  // Provider-specific routing (before protocol check)
+  if (cfg.provider === "azure") {
+    return new AzureOpenAIBackend(cfg, apiKey, fetchFn);
+  }
+
+  if (cfg.provider === "bedrock") {
+    return new BedrockBackend(cfg, apiKey, fetchFn);
+  }
+
   // Select backend based on protocol
   if (cfg.protocol === "v1/messages") {
     return new AnthropicMessagesBackend(cfg, apiKey, fetchFn);
   } else {
     // Default to OpenAI-compatible for "v1/chat/completions"
+    // Handles: OpenAI, OpenRouter, Ollama, llama.cpp, vLLM, etc.
     return new OpenAICompatibleBackend(cfg, apiKey, fetchFn);
   }
 }

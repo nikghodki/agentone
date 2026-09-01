@@ -172,9 +172,8 @@ v1 `conversations`/`messages` tables are reused for the task/chat surface.
 ## 11. Phasing (thin slice → fast-follows)
 - **Phase 0 (spike): DONE** — all three frameworks + Ollama installed/verified; capability loop GO (proven on zeptoclaw, no restart). Findings in `docs/research/verified/`.
 - **Phase 1 (foundations): DONE** — v2 types + schema, secrets, ModelBackend layer (both protocols) + factory, framework registry, onboarding wizard. (Merged.)
-- **Phase 2 (adapters — NEXT): zeptoclaw FIRST** as the proven reference adapter (install/configure/start/sendTask/streamOutput/installCapability, sandboxed install) + the capability orchestrator + a real end-to-end run with Ollama; then hermes; then **openclaw last** (hardest to wire — its config-migration must be solved before it can serve as the default). Framework install must be **sandboxed** (spike finding).
-- **Phase 3:** model backends — advanced-local (llama.cpp/vLLM), custom endpoint (both protocols), cloud providers + API-key entry (`secrets.set`).
-- **Phase 3:** model backends — advanced-local (llama.cpp/vLLM), custom endpoint (both protocols), cloud providers.
+- **Phase 2 (adapters): DONE** — zeptoclaw (reference), hermes, and openclaw adapters + capability orchestrator + sandboxed installs, all merged. Default is **zeptoclaw** (openclaw failed the headless "works E2E" gate — see §12 post-O4). Live E2E findings in `docs/research/verified/`.
+- **Phase 3 (model backends): DONE** — managed **llama.cpp** (download llama-server + curated GGUF, launch on loopback, monitor) + custom endpoint (both protocols) + cloud providers **Anthropic, OpenAI, OpenRouter, Azure OpenAI, Amazon Bedrock** (Bedrock via in-repo AWS SigV4) + API-key/multi-part-credential entry (`secrets.set`, JSON blob for Bedrock). **Deferred:** managed **vLLM** (Linux/CUDA, not Mac-viable — custom endpoint covers BYO vLLM); **Bedrock token streaming** (AWS binary event-stream — non-streaming `invoke` for now); Bedrock limited to Anthropic Claude model family.
 - **Phase 4:** remote deployments; capability management UI; polish.
 
 ---

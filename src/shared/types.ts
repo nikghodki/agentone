@@ -124,8 +124,8 @@ export interface ElectronAPI {
   onTaskStatus: (callback: (status: string) => void) => () => void;
 
   saveModelBackend: (
-    draft: { kind: string; provider: string | null; baseUrl: string | null; protocol: string; model: string },
-    apiKey?: string
+    draft: { kind: string; provider: string | null; baseUrl: string | null; protocol: string; model: string; extra?: Record<string, unknown> | null },
+    secret?: string
   ) => Promise<string>;
 }
 

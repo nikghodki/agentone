@@ -20,6 +20,7 @@ export interface ModelBackendConfig {
   id: string; kind: ModelBackendKind; provider: string | null;
   baseUrl: string | null; protocol: ModelProtocol; model: string;
   secretRef: string | null;        // -> keychain ref, never the raw key
+  extra?: Record<string, unknown> | null;   // provider-specific config (azure/bedrock); JSON in DB extra_json
 }
 export interface InstalledCapability {
   deploymentId: string; type: "mcp" | "plugin" | "skill"; name: string; source: string;

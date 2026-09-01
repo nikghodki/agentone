@@ -349,6 +349,46 @@ describe("AnthropicMessagesBackend", () => {
   });
 });
 
+describe("AzureOpenAIBackend", () => {
+  let BackendClass: new (config: ModelBackendConfig, apiKey: string | null, fetchFn?: typeof fetch) => any;
+
+  beforeEach(async () => {
+    const module = await import("../../src/main/model-backends/azure-openai");
+    BackendClass = (module as any).AzureOpenAIBackend;
+  });
+
+  it("Azure backend builds deployment URL with api-version and uses api-key header", async () => {
+    const calls: any[] = [];
+    const fakeFetch = async (url: string, opts: any) => { calls.push({ url, opts }); return { ok: true, body: createSSEStream(['data: {"choices":[{"delta":{"content":"hi"}}]}\n\n', "data: [DONE]\n\n"]) } as any; };
+    const cfg = { id: "a", kind: "cloud", provider: "azure", baseUrl: null, protocol: "v1/chat/completions", model: "gpt-4o",
+      secretRef: "backend:a", extra: { resourceUrl: "https://r.openai.azure.com", deployment: "gpt4o", apiVersion: "2024-06-01" } };
+    const backend = new BackendClass(cfg as any, "AZKEY", fakeFetch as any);
+    const out = await backend.chat([{ role: "user", content: "yo" }], () => {});
+    expect(calls[0].url).toBe("https://r.openai.azure.com/openai/deployments/gpt4o/chat/completions?api-version=2024-06-01");
+    expect(calls[0].opts.headers["api-key"]).toBe("AZKEY");
+    expect(calls[0].opts.headers["Authorization"]).toBeUndefined();
+    expect(out).toBe("hi");
+  });
+
+  it("Azure backend throws clear error when extra config is missing required fields", async () => {
+    const fakeFetch = async () => ({ ok: true, body: null } as any);
+
+    // Missing extra entirely
+    const cfg1 = { id: "a", provider: "azure", protocol: "v1/chat/completions", model: "gpt-4o" };
+    await expect(async () => {
+      const backend = new BackendClass(cfg1 as any, "key", fakeFetch as any);
+      await backend.chat([{ role: "user", content: "test" }], () => {});
+    }).rejects.toThrow("Azure backend requires extra.resourceUrl, extra.deployment, and extra.apiVersion");
+
+    // Missing deployment
+    const cfg2 = { id: "a", provider: "azure", extra: { resourceUrl: "https://r", apiVersion: "v" } };
+    await expect(async () => {
+      const backend = new BackendClass(cfg2 as any, "key", fakeFetch as any);
+      await backend.chat([{ role: "user", content: "test" }], () => {});
+    }).rejects.toThrow("Azure backend requires extra.resourceUrl, extra.deployment, and extra.apiVersion");
+  });
+});
+
 describe("createBackend", () => {
   let createBackend: any;
   let mockSecrets: any;
@@ -500,5 +540,90 @@ describe("createBackend", () => {
 
     expect(capturedHeaders).not.toHaveProperty("Authorization");
     expect(capturedHeaders).not.toHaveProperty("x-api-key");
+  });
+
+  it("createBackend routes provider=azure to AzureOpenAIBackend and provider=openrouter to OpenAI-compatible", async () => {
+    const { AzureOpenAIBackend } = await import("../../src/main/model-backends/azure-openai");
+    const { OpenAICompatibleBackend } = await import("../../src/main/model-backends/openai-compatible");
+
+    const secrets = { get: () => "k" } as any;
+    const mockFetch = async () => ({ ok: true, body: null } as any);
+    const azure = createBackend({ provider: "azure", protocol: "v1/chat/completions", extra: { resourceUrl: "https://r", deployment: "d", apiVersion: "v" } } as any, secrets, mockFetch as any);
+    expect(azure).toBeInstanceOf(AzureOpenAIBackend);
+    const or = createBackend({ provider: "openrouter", protocol: "v1/chat/completions", baseUrl: "https://openrouter.ai/api" } as any, secrets, mockFetch as any);
+    expect(or).toBeInstanceOf(OpenAICompatibleBackend);
+  });
+});
+
+describe("BedrockBackend", () => {
+  let createBackend: any;
+
+  beforeEach(async () => {
+    const module = await import("../../src/main/model-backends/index");
+    createBackend = module.createBackend;
+  });
+
+  it("Bedrock backend signs an invoke request and returns the Claude answer (non-streaming)", async () => {
+    const calls: any[] = [];
+    const fakeFetch = async (url: string, opts: any) => {
+      calls.push({ url, opts });
+      return {
+        ok: true,
+        json: async () => ({ content: [{ type: "text", text: "4" }] }),  // Bedrock Anthropic invoke response shape
+      } as any;
+    };
+    const secrets = { get: () => JSON.stringify({ accessKeyId: "AKID", secretAccessKey: "sk" }) } as any;
+    const cfg = {
+      id: "b",
+      kind: "cloud",
+      provider: "bedrock",
+      baseUrl: null,
+      protocol: "v1/messages",
+      model: "anthropic.claude-3-5-sonnet-20240620-v1:0",
+      secretRef: "backend:b",
+      extra: { region: "us-east-1" }
+    };
+    const backend = createBackend(cfg as any, secrets, fakeFetch as any);
+    const tokens: string[] = [];
+    const out = await backend.chat([{ role: "user", content: "2+2? one number" }], (t) => tokens.push(t));
+    expect(calls[0].url).toContain("bedrock-runtime.us-east-1.amazonaws.com");
+    expect(calls[0].url).toContain(encodeURIComponent(cfg.model) + "/invoke");  // or the exact invoke path
+    expect(calls[0].opts.headers["Authorization"]).toContain("AWS4-HMAC-SHA256");
+    expect(out).toBe("4");
+    expect(tokens).toEqual(["4"]);   // non-streaming: single onToken call
+  });
+
+  it("Bedrock backend hoists system messages to top-level system field", async () => {
+    const calls: any[] = [];
+    const fakeFetch = async (url: string, opts: any) => {
+      calls.push({ url, opts });
+      return {
+        ok: true,
+        json: async () => ({ content: [{ type: "text", text: "ok" }] }),
+      } as any;
+    };
+    const secrets = { get: () => JSON.stringify({ accessKeyId: "AKID", secretAccessKey: "sk" }) } as any;
+    const cfg = {
+      id: "b",
+      kind: "cloud",
+      provider: "bedrock",
+      baseUrl: null,
+      protocol: "v1/messages",
+      model: "anthropic.claude-3-5-sonnet-20240620-v1:0",
+      secretRef: "backend:b",
+      extra: { region: "us-east-1" }
+    };
+    const backend = createBackend(cfg as any, secrets, fakeFetch as any);
+
+    await backend.chat([
+      { role: "system", content: "You are helpful" },
+      { role: "user", content: "hi" }
+    ], () => {});
+
+    const requestBody = JSON.parse(calls[0].opts.body);
+    expect(requestBody.system).toBe("You are helpful");
+    expect(requestBody.messages).toHaveLength(1);
+    expect(requestBody.messages[0].role).toBe("user");
+    expect(requestBody.messages).not.toContainEqual(expect.objectContaining({ role: "system" }));
   });
 });

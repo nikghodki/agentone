@@ -85,7 +85,8 @@ export class Database {
         base_url TEXT,
         protocol TEXT NOT NULL,
         model TEXT NOT NULL,
-        secret_ref TEXT
+        secret_ref TEXT,
+        extra_json TEXT
       );
 
       CREATE TABLE IF NOT EXISTS capabilities (
@@ -99,6 +100,12 @@ export class Database {
 
       CREATE INDEX IF NOT EXISTS idx_capabilities_deployment_id ON capabilities(deployment_id);
     `);
+
+    // Migration: ensure extra_json exists on model_backends created before this column was added.
+    const cols = this.db.prepare("PRAGMA table_info(model_backends)").all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === "extra_json")) {
+      this.db.exec("ALTER TABLE model_backends ADD COLUMN extra_json TEXT");
+    }
   }
 
   getProfile(): UserProfile | null {
@@ -296,10 +303,11 @@ export class Database {
   saveModelBackend(b: ModelBackendConfig): void {
     this.db
       .prepare(
-        `INSERT OR REPLACE INTO model_backends (id, kind, provider, base_url, protocol, model, secret_ref)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
+        `INSERT OR REPLACE INTO model_backends (id, kind, provider, base_url, protocol, model, secret_ref, extra_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(b.id, b.kind, b.provider, b.baseUrl, b.protocol, b.model, b.secretRef);
+      .run(b.id, b.kind, b.provider, b.baseUrl, b.protocol, b.model, b.secretRef,
+           b.extra != null ? JSON.stringify(b.extra) : null);
   }
 
   getModelBackend(id: string): ModelBackendConfig | null {
@@ -313,6 +321,7 @@ export class Database {
       protocol: row.protocol,
       model: row.model,
       secretRef: row.secret_ref,
+      extra: row.extra_json ? JSON.parse(row.extra_json) : null,
     };
   }
 
