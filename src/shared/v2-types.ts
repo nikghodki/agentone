@@ -37,4 +37,5 @@ export interface FrameworkAdapter {
   installCapability(spec: { type: string; name: string }): Promise<void>;
   requiresRestartAfterInstall(): boolean;
   restart(): Promise<void>;
+  detectGap?(input: string): Promise<{ type: "skill" | "mcp" | "plugin"; name: string } | null>;
 }

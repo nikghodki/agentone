@@ -323,6 +323,8 @@ export class ZeptoclawAdapter implements FrameworkAdapter {
       if (buffer.trim() && !this.isSpinnerLine(buffer)) {
         cb(buffer);
       }
+      // Always emit task done at the end
+      cb("__TASK_DONE__");
     };
 
     const stdout = child.stdout;
@@ -393,6 +395,60 @@ export class ZeptoclawAdapter implements FrameworkAdapter {
     }
 
     return capabilities;
+  }
+
+  /**
+   * Get list of disabled tools that need setup.
+   * Parses `zeptoclaw tools list` output for `[-]` markers.
+   *
+   * SECURITY: Uses argument array to prevent command injection.
+   */
+  private async getDisabledTools(): Promise<string[]> {
+    const result = await this.execWithArgsFn("zeptoclaw", ["tools", "list"]);
+    const disabled: string[] = [];
+    const lines = result.stdout.split("\n");
+    for (const line of lines) {
+      const match = line.match(/^\s*\[-\]\s+(\w+)/);
+      if (match) disabled.push(match[1]);
+    }
+    return disabled;
+  }
+
+  /**
+   * Check if a task references an unavailable capability.
+   * Returns the gap spec if found, null otherwise.
+   *
+   * This implements pre-flight gap detection (Approach A from the recipe):
+   * - Parses task for @skill-name references → checks against installed skills
+   * - Parses task for tool name references → checks against disabled tools
+   *
+   * SECURITY: Uses argument array for all CLI calls.
+   */
+  async detectGap(taskInput: string): Promise<{ type: "skill" | "mcp" | "plugin"; name: string } | null> {
+    // Get current state
+    const disabledTools = await this.getDisabledTools();
+    const availableSkills = await this.listCapabilities();
+    const skillNames = new Set(availableSkills.map(s => s.name));
+
+    // Parse task for capability references
+    // Pattern: @skill-name
+    const skillMatch = taskInput.match(/@([\w-]+)/);
+    if (skillMatch) {
+      const skillName = skillMatch[1];
+      if (!skillNames.has(skillName)) {
+        return { type: "skill", name: skillName };
+      }
+    }
+
+    // Check for tool references (word boundary, case-insensitive)
+    for (const tool of disabledTools) {
+      const toolPattern = new RegExp(`\\b${tool}\\b`, 'i');
+      if (toolPattern.test(taskInput)) {
+        return { type: "mcp", name: tool };
+      }
+    }
+
+    return null;
   }
 
   /**

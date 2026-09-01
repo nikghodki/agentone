@@ -379,9 +379,11 @@ describe("ZeptoclawAdapter", () => {
       await new Promise(resolve => setTimeout(resolve, 50));
 
       // Verify both lines were delivered correctly (none dropped, none merged wrong)
-      expect(lines).toHaveLength(2);
+      // Plus __TASK_DONE__ marker at end
+      expect(lines).toHaveLength(3);
       expect(lines[0]).toBe("Hello world");
       expect(lines[1]).toBe("How are you?");
+      expect(lines[2]).toBe("__TASK_DONE__");
 
       // Cleanup
       unsubscribe();
@@ -445,10 +447,12 @@ describe("ZeptoclawAdapter", () => {
       await new Promise(resolve => setTimeout(resolve, 50));
 
       // Verify only spinner lines were filtered
-      expect(lines).toHaveLength(3);
+      // Plus __TASK_DONE__ marker at end
+      expect(lines).toHaveLength(4);
       expect(lines[0]).toBe("The answer is 4");
       expect(lines[1]).toBe("I was Thinking about it");
       expect(lines[2]).toBe("The result is ⠋ braille");
+      expect(lines[3]).toBe("__TASK_DONE__");
     });
   });
 
@@ -659,6 +663,222 @@ describe("ZeptoclawAdapter", () => {
       expect(callOrder).toEqual(["stop", "start"]);
       expect(mockProcessManager.stop).toHaveBeenCalledOnce();
       expect(mockProcessManager.start).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("gap detection (Phase 2b)", () => {
+    it("getDisabledTools() parses [-] lines from tools list", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: `Tools:
+  [+] read_file
+      Read a file from workspace
+
+  [-] message
+      Send proactive messages to channels
+      Setup: Configure at least one channel (telegram, slack, discord)
+
+  [-] r8r
+      Execute R8r deterministic workflows
+      Setup: Set R8R_API_URL env var
+
+  [+] shell
+      Execute shell commands`,
+        stderr: "",
+      });
+
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(
+        tempDir,
+        mockProbe,
+        null as any,
+        null as any,
+        null as any,
+        mockExecWithArgs
+      );
+
+      const disabled = await (adapter as any).getDisabledTools();
+
+      // Verify exec was called with argument array
+      expect(mockExecWithArgs).toHaveBeenCalledWith("zeptoclaw", ["tools", "list"]);
+
+      // Verify only disabled tools were parsed
+      expect(disabled).toHaveLength(2);
+      expect(disabled).toContain("message");
+      expect(disabled).toContain("r8r");
+    });
+
+    it("getDisabledTools() returns empty array when all tools enabled", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: `Tools:
+  [+] read_file
+  [+] shell`,
+        stderr: "",
+      });
+
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(
+        tempDir,
+        mockProbe,
+        null as any,
+        null as any,
+        null as any,
+        mockExecWithArgs
+      );
+
+      const disabled = await (adapter as any).getDisabledTools();
+
+      expect(disabled).toEqual([]);
+    });
+
+    it("detectGap() returns skill gap when task references absent @skill", async () => {
+      const mockExecWithArgs = vi.fn()
+        .mockResolvedValueOnce({
+          stdout: `Tools:
+  [+] read_file`,
+          stderr: "",
+        })
+        .mockResolvedValueOnce({
+          stdout: `Skills:
+  - existing-skill (workspace, ready)`,
+          stderr: "",
+        });
+
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(
+        tempDir,
+        mockProbe,
+        null as any,
+        null as any,
+        null as any,
+        mockExecWithArgs
+      );
+
+      const gap = await adapter.detectGap!("Please use @web-search to find latest news");
+
+      expect(gap).toEqual({ type: "skill", name: "web-search" });
+    });
+
+    it("detectGap() returns tool gap when task references disabled tool", async () => {
+      const mockExecWithArgs = vi.fn()
+        .mockResolvedValueOnce({
+          stdout: `Tools:
+  [+] read_file
+  [-] r8r
+      Execute R8r workflows`,
+          stderr: "",
+        })
+        .mockResolvedValueOnce({
+          stdout: `Skills:`,
+          stderr: "",
+        });
+
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(
+        tempDir,
+        mockProbe,
+        null as any,
+        null as any,
+        null as any,
+        mockExecWithArgs
+      );
+
+      const gap = await adapter.detectGap!("Execute r8r workflow for deployment");
+
+      expect(gap).toEqual({ type: "mcp", name: "r8r" });
+    });
+
+    it("detectGap() returns null when referenced capability is available", async () => {
+      const mockExecWithArgs = vi.fn()
+        .mockResolvedValueOnce({
+          stdout: `Tools:
+  [+] read_file`,
+          stderr: "",
+        })
+        .mockResolvedValueOnce({
+          stdout: `Skills:
+  - web-search (workspace, ready)`,
+          stderr: "",
+        });
+
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(
+        tempDir,
+        mockProbe,
+        null as any,
+        null as any,
+        null as any,
+        mockExecWithArgs
+      );
+
+      const gap = await adapter.detectGap!("Please use @web-search to find latest news");
+
+      expect(gap).toBeNull();
+    });
+
+    it("detectGap() returns null when no capability references found", async () => {
+      const mockExecWithArgs = vi.fn()
+        .mockResolvedValueOnce({
+          stdout: `Tools:
+  [+] read_file
+  [-] r8r`,
+          stderr: "",
+        })
+        .mockResolvedValueOnce({
+          stdout: `Skills:`,
+          stderr: "",
+        });
+
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(
+        tempDir,
+        mockProbe,
+        null as any,
+        null as any,
+        null as any,
+        mockExecWithArgs
+      );
+
+      const gap = await adapter.detectGap!("What is 2+2?");
+
+      expect(gap).toBeNull();
+    });
+
+    it("streamOutput() emits __TASK_DONE__ at end", async () => {
+      const { Readable } = await import("stream");
+
+      const fakeStdout = new Readable({
+        read() {},
+      });
+
+      const mockProcessManager = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isRunning: vi.fn().mockReturnValue(true),
+        getChild: vi.fn().mockReturnValue({
+          stdout: fakeStdout,
+        }),
+      };
+
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(tempDir, mockProbe, mockProcessManager as any);
+
+      const chunks: string[] = [];
+      adapter.streamOutput((chunk) => {
+        chunks.push(chunk);
+      });
+
+      // Emit some output then end
+      fakeStdout.push("Task result line 1\n");
+      fakeStdout.push("Task result line 2\n");
+      fakeStdout.push(null); // End stream
+
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // Verify output was captured and __TASK_DONE__ was appended
+      expect(chunks).toContain("Task result line 1");
+      expect(chunks).toContain("Task result line 2");
+      expect(chunks).toContain("__TASK_DONE__");
+      expect(chunks[chunks.length - 1]).toBe("__TASK_DONE__");
     });
   });
 });

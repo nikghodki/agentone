@@ -18,6 +18,8 @@ class FakeAdapter implements FrameworkAdapter {
   public capabilityGaps: string[] = []; // For multi-gap tests
   public persistentGap: string | null = null; // For persistent-gap test
   public taskCounter: number = 0; // Track how many times sendTask was called
+  public preflightGap: { type: "skill" | "mcp" | "plugin"; name: string } | null = null; // For pre-flight detection
+  public hasDetectGap: boolean = false; // Whether detectGap method exists
 
   async install(): Promise<void> {
     this.callLog.push("install");
@@ -123,6 +125,23 @@ class FakeAdapter implements FrameworkAdapter {
     this.callLog.push("restart");
     await this.stop();
     await this.start();
+  }
+
+  async detectGap?(input: string): Promise<{ type: "skill" | "mcp" | "plugin"; name: string } | null> {
+    if (!this.hasDetectGap) {
+      // If detectGap is not enabled, this method shouldn't exist
+      return null;
+    }
+
+    this.callLog.push(`detectGap:${input}`);
+
+    if (this.preflightGap) {
+      const gap = this.preflightGap;
+      this.preflightGap = null; // Return gap once, then null
+      return gap;
+    }
+
+    return null;
   }
 }
 
@@ -513,6 +532,153 @@ describe("CapabilityOrchestrator", () => {
       // Verify type is mcp and name includes the colon
       expect(db.recordedCapabilities[0].type).toBe("mcp");
       expect(db.recordedCapabilities[0].name).toBe("scope:my-server");
+    });
+  });
+
+  describe("runTask() - pre-flight detection (Phase 2b)", () => {
+    it("calls detectGap before sendTask when adapter supports it", async () => {
+      adapter.hasDetectGap = true;
+      adapter.preflightGap = { type: "skill", name: "web-search" };
+      adapter.shouldRequireRestart = false;
+
+      const tokens: string[] = [];
+      const statuses: string[] = [];
+
+      const result = await orchestrator.runTask(
+        "Search for AI news",
+        (token) => tokens.push(token),
+        (status) => statuses.push(status)
+      );
+
+      // Verify task completed
+      expect(result).toContain("Task completed successfully");
+
+      // Verify detectGap was called BEFORE sendTask
+      const detectGapIndex = adapter.callLog.findIndex((c) => c.startsWith("detectGap:"));
+      const sendTaskIndex = adapter.callLog.findIndex((c) => c.startsWith("sendTask:"));
+
+      expect(detectGapIndex).toBeGreaterThan(-1);
+      expect(sendTaskIndex).toBeGreaterThan(-1);
+      expect(detectGapIndex).toBeLessThan(sendTaskIndex);
+
+      // Verify install happened before sendTask
+      const installIndex = adapter.callLog.findIndex((c) => c === "installCapability:web-search");
+      expect(installIndex).toBeGreaterThan(detectGapIndex);
+      expect(installIndex).toBeLessThan(sendTaskIndex);
+
+      // Verify capability was recorded
+      expect(db.recordedCapabilities).toHaveLength(1);
+      expect(db.recordedCapabilities[0]).toEqual({
+        deploymentId: "test-deployment-id",
+        type: "skill",
+        name: "web-search",
+        source: "marketplace",
+      });
+
+      // Verify status update fired
+      expect(statuses).toContain("Setting up web-search...");
+    });
+
+    it("skips pre-flight when adapter does not support detectGap", async () => {
+      // Don't set hasDetectGap or preflightGap
+      adapter.hasDetectGap = false;
+      adapter.capabilityGapOnFirstTask = null;
+
+      const tokens: string[] = [];
+      const statuses: string[] = [];
+
+      const result = await orchestrator.runTask(
+        "What is 2+2?",
+        (token) => tokens.push(token),
+        (status) => statuses.push(status)
+      );
+
+      // Verify task completed
+      expect(result).toContain("Task completed successfully");
+
+      // Verify detectGap was NOT called (method doesn't exist)
+      const detectGapCalls = adapter.callLog.filter((c) => c.startsWith("detectGap:"));
+      expect(detectGapCalls).toHaveLength(0);
+
+      // Verify no install happened
+      const installCalls = adapter.callLog.filter((c) => c.startsWith("installCapability:"));
+      expect(installCalls).toHaveLength(0);
+
+      // Verify no capability was recorded
+      expect(db.recordedCapabilities).toHaveLength(0);
+    });
+
+    it("pre-flight detection with restart-required capability", async () => {
+      adapter.hasDetectGap = true;
+      adapter.preflightGap = { type: "mcp", name: "database" };
+      adapter.shouldRequireRestart = true;
+      adapter.statusHealthy = true;
+
+      const tokens: string[] = [];
+      const statuses: string[] = [];
+
+      const result = await orchestrator.runTask(
+        "Query the database",
+        (token) => tokens.push(token),
+        (status) => statuses.push(status)
+      );
+
+      // Verify task completed
+      expect(result).toContain("Task completed successfully");
+
+      // Verify install happened with restart
+      expect(adapter.callLog).toContain("installCapability:database");
+      expect(adapter.callLog).toContain("stop");
+      expect(adapter.callLog).toContain("start");
+
+      // Verify order: detectGap → install → restart → sendTask
+      const detectGapIndex = adapter.callLog.findIndex((c) => c.startsWith("detectGap:"));
+      const installIndex = adapter.callLog.findIndex((c) => c === "installCapability:database");
+      const stopIndex = adapter.callLog.findIndex((c) => c === "stop");
+      const sendTaskIndex = adapter.callLog.findIndex((c) => c.startsWith("sendTask:"));
+
+      expect(detectGapIndex).toBeLessThan(installIndex);
+      expect(installIndex).toBeLessThan(stopIndex);
+      expect(stopIndex).toBeLessThan(sendTaskIndex);
+
+      // Verify capability was recorded
+      expect(db.recordedCapabilities).toHaveLength(1);
+      expect(db.recordedCapabilities[0].type).toBe("mcp");
+      expect(db.recordedCapabilities[0].name).toBe("database");
+    });
+
+    it("combines pre-flight and stream-marker detection", async () => {
+      adapter.hasDetectGap = true;
+      adapter.preflightGap = { type: "skill", name: "first-skill" };
+      // After first gap is installed, task will emit another gap via stream marker
+      adapter.capabilityGaps = ["second-skill"];
+      adapter.shouldRequireRestart = false;
+
+      const tokens: string[] = [];
+      const statuses: string[] = [];
+
+      const result = await orchestrator.runTask(
+        "Use multiple skills",
+        (token) => tokens.push(token),
+        (status) => statuses.push(status)
+      );
+
+      // Verify task completed
+      expect(result).toContain("Task completed successfully with all capabilities");
+
+      // Verify both gaps were handled
+      expect(adapter.callLog).toContain("installCapability:first-skill");
+      expect(adapter.callLog).toContain("installCapability:second-skill");
+
+      // Verify both were recorded
+      expect(db.recordedCapabilities).toHaveLength(2);
+      expect(db.recordedCapabilities[0].name).toBe("first-skill");
+      expect(db.recordedCapabilities[1].name).toBe("second-skill");
+
+      // Verify detectGap was called before first sendTask
+      const detectGapIndex = adapter.callLog.findIndex((c) => c.startsWith("detectGap:"));
+      const firstSendTaskIndex = adapter.callLog.findIndex((c) => c.startsWith("sendTask:"));
+      expect(detectGapIndex).toBeLessThan(firstSendTaskIndex);
     });
   });
 });
