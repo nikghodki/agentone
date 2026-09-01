@@ -290,7 +290,8 @@ describe("HermesAdapter", () => {
       // Verify spawn was called with hermes chat
       expect(mockProcessManager.start).toHaveBeenCalledOnce();
       const [cmd, args, opts] = (mockProcessManager.start as any).mock.calls[0];
-      expect(cmd).toBe("hermes");
+      // Should use absolute path to avoid PATH lookup (H1 guardrail)
+      expect(cmd).toContain(".local/bin/hermes");
       expect(args).toEqual(["chat"]);
 
       // CRITICAL: Verify PATH is EXPLICIT and sandboxed (H1 guardrail)

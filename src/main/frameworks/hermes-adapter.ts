@@ -223,6 +223,8 @@ export class HermesAdapter implements FrameworkAdapter {
    * Or `hermes -z "prompt"` for one-shot (but we use interactive for streaming)
    *
    * CRITICAL GUARDRAIL (H1): Explicit sandboxed PATH, never inherit host PATH.
+   * Uses absolute path to hermes binary to avoid including ~/.local/bin in PATH
+   * (which would expose the node 26 symlinks that break host node 16).
    */
   async start(): Promise<void> {
     // Build sandboxed env with EXPLICIT PATH (no host PATH inheritance)
@@ -243,8 +245,11 @@ export class HermesAdapter implements FrameworkAdapter {
       }
     }
 
+    // Use absolute path to hermes binary (avoid PATH lookup that would require ~/.local/bin)
+    const hermesBinary = path.join(process.env.HOME || "", ".local/bin/hermes");
+
     // Spawn hermes chat (interactive mode for stdin/stdout streaming)
-    this.processManager.start("hermes", ["chat"], { env });
+    this.processManager.start(hermesBinary, ["chat"], { env });
   }
 
   /**
