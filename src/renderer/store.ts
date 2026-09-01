@@ -44,6 +44,7 @@ interface AppState {
   // v2 onboarding state
   selectedFrameworkId: string;
   modelBackendDraft: ModelBackendDraft;
+  modelBackendId: string | null;
 
   // v2 task state
   currentDeploymentId: string | null;
@@ -67,6 +68,7 @@ interface AppState {
   // v2 onboarding actions
   setFramework: (id: string) => void;
   setModelBackendDraft: (partial: Partial<ModelBackendDraft>) => void;
+  setModelBackendId: (id: string | null) => void;
 
   // v2 task actions
   setCurrentDeploymentId: (id: string | null) => void;
@@ -99,6 +101,7 @@ export const useAppStore = create<AppState>((set) => ({
     protocol: "v1/chat/completions",
     model: "",
   },
+  modelBackendId: null,
 
   // v2 task initial state
   currentDeploymentId: null,
@@ -124,6 +127,7 @@ export const useAppStore = create<AppState>((set) => ({
   setFramework: (id) => set({ selectedFrameworkId: id }),
   setModelBackendDraft: (partial) =>
     set((s) => ({ modelBackendDraft: { ...s.modelBackendDraft, ...partial } })),
+  setModelBackendId: (id) => set({ modelBackendId: id }),
 
   // v2 task actions
   setCurrentDeploymentId: (id) => set({ currentDeploymentId: id }),

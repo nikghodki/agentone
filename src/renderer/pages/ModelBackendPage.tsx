@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useAppStore } from "../store";
 import type { ModelBackendKind, ModelProtocol } from "@shared/v2-types";
 
@@ -5,6 +6,7 @@ export function ModelBackendPage() {
   const draft = useAppStore((s) => s.modelBackendDraft);
   const setModelBackendDraft = useAppStore((s) => s.setModelBackendDraft);
   const selectedFrameworkId = useAppStore((s) => s.selectedFrameworkId);
+  const [apiKey, setApiKey] = useState("");
 
   const handleKindChange = (kind: ModelBackendKind) => {
     // Reset fields when switching kind
@@ -19,10 +21,16 @@ export function ModelBackendPage() {
 
   const handleFinish = async () => {
     try {
-      // Deploy the framework with the configured model backend
+      // Save the model backend + API key, get the real backend ID
+      const backendId = await window.electronAPI.saveModelBackend(draft, apiKey);
+
+      // Store the backend ID
+      useAppStore.getState().setModelBackendId(backendId);
+
+      // Deploy the framework with the real model backend ID
       const deployment = await window.electronAPI.deployFramework(
         selectedFrameworkId,
-        "placeholder-backend-id" // Model backend persistence is a separate concern
+        backendId
       );
 
       // Set the current deployment and navigate to task page
@@ -182,6 +190,26 @@ export function ModelBackendPage() {
               className="w-full px-4 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
             />
           </div>
+
+          {/* API Key (only for cloud and custom) */}
+          {(draft.kind === "cloud" || draft.kind === "custom") && (
+            <div>
+              <label className="block text-sm font-medium text-zinc-300 mb-2">
+                API Key {draft.kind === "custom" ? "(optional)" : ""}
+              </label>
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder={
+                  draft.kind === "cloud"
+                    ? "sk-ant-api03-..."
+                    : "API key (if required)"
+                }
+                className="w-full px-4 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+              />
+            </div>
+          )}
         </div>
 
         <div className="flex justify-between">

@@ -122,6 +122,11 @@ export interface ElectronAPI {
   getDeployments: () => Promise<Deployment[]>;
   onTaskToken: (callback: (token: string) => void) => () => void;
   onTaskStatus: (callback: (status: string) => void) => () => void;
+
+  saveModelBackend: (
+    draft: { kind: string; provider: string | null; baseUrl: string | null; protocol: string; model: string },
+    apiKey?: string
+  ) => Promise<string>;
 }
 
 declare global {
