@@ -5,6 +5,13 @@ copyright: Copyright © 2026 AgentOne
 directories:
   output: release
 
+# Do NOT let electron-builder rebuild native deps: its @electron/rebuild step
+# pulls a PREBUILT better-sqlite3 for the host Node ABI (v93 / Node 16), which
+# crashes the packaged app at import (Electron needs v113). Instead we compile
+# better-sqlite3 from source against Electron's headers via `npm run rebuild:electron`
+# BEFORE packaging (see package.json / PACKAGING.md), and package it as-is.
+npmRebuild: false
+
 # App files. Production node_modules (better-sqlite3 + its deps) are included by
 # electron-builder automatically and pruned of devDependencies — do NOT hand-list
 # node_modules here (the old !node_modules + manual re-include missed transitive
