@@ -26,11 +26,15 @@ export interface InstalledCapability {
   deploymentId: string; type: "mcp" | "plugin" | "skill"; name: string; source: string;
 }
 export interface ChatMessage { role: "system" | "user" | "assistant"; content: string; }
+export interface FrameworkDeployOptions {
+  persona?: string;       // agent persona/SOUL.md content; applied only if non-empty (trimmed)
+  gatewayPort?: number;   // messaging gateway port; applied only where the framework has a verified key
+}
 // Interfaces implemented in later tasks:
 export interface ModelBackend { chat(messages: ChatMessage[], onToken: (t: string) => void): Promise<string>; }
 export interface FrameworkAdapter {
   install(): Promise<void>;
-  configure(backend: ModelBackendConfig): Promise<void>;
+  configure(backend: ModelBackendConfig, options?: FrameworkDeployOptions): Promise<void>;
   start(): Promise<void>; stop(): Promise<void>; status(): Promise<string>;
   sendTask(input: string): Promise<void>;
   streamOutput(cb: (chunk: string) => void): () => void;
