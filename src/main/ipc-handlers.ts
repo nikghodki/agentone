@@ -190,7 +190,7 @@ export async function handleRemoveDeployment(
     }
   }
 
-  // Always delete the deployment record (and its capabilities via CASCADE)
+  // Always delete the deployment record (and its capabilities)
   deps.db.deleteDeployment(deploymentId);
 }
 
