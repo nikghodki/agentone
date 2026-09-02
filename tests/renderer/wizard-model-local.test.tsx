@@ -110,6 +110,10 @@ describe("ModelLocalStep", () => {
       expect(draft.kind).toBe("custom");
       expect(draft.baseUrl).toBe("http://localhost:11434");
       expect(draft.protocol).toBe("v1/messages");
+
+      // API key must be persisted to cloudForm.apiKey (survives to deploy)
+      const cloudForm = useAppStore.getState().cloudForm;
+      expect(cloudForm.apiKey).toBe("test-key-123");
     });
   });
 

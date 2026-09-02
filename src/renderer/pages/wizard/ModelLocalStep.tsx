@@ -18,6 +18,7 @@ const DEFAULT_MODEL = "llama3.2:3b";
 export function ModelLocalStep() {
   const modelBackendDraft = useAppStore((s) => s.modelBackendDraft);
   const setModelBackendDraft = useAppStore((s) => s.setModelBackendDraft);
+  const patchWizard = useAppStore((s) => s.patchWizard);
 
   const [selectedOption, setSelectedOption] = React.useState<string>("default");
   const [customBaseUrl, setCustomBaseUrl] = React.useState<string>("");
@@ -115,6 +116,14 @@ export function ModelLocalStep() {
     });
   };
 
+  const handleCustomApiKeyChange = (apiKey: string) => {
+    setCustomApiKey(apiKey);
+    // Persist to cloudForm.apiKey (survives to deploy step)
+    patchWizard({
+      cloudForm: { apiKey },
+    });
+  };
+
   const options: RadioCard[] = [
     {
       value: "default",
@@ -183,7 +192,7 @@ export function ModelLocalStep() {
             label="API Key"
             type="password"
             value={customApiKey}
-            onChange={(e) => setCustomApiKey(e.target.value)}
+            onChange={(e) => handleCustomApiKeyChange(e.target.value)}
             placeholder="Optional"
             helper="Leave empty if your endpoint doesn't require authentication"
           />
