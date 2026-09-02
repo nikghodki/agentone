@@ -5,6 +5,7 @@ import { FrameworkStep } from "./FrameworkStep";
 import { ConfigStep } from "./ConfigStep";
 import { ModelLocationStep } from "./ModelLocationStep";
 import { ModelLocalStep } from "./ModelLocalStep";
+import { ModelCloudStep } from "./ModelCloudStep";
 
 // Map wizard steps to the 4 visible groups in StepProgress
 function getStepProgressKey(wizardStep: WizardStep): string {
@@ -99,7 +100,7 @@ export function Wizard() {
       case "model-local":
         return modelBackendDraft.model !== null && modelBackendDraft.model !== "";
       case "model-cloud":
-        return true; // Cloud step will validate its own fields
+        return modelBackendDraft.model !== null && modelBackendDraft.model !== "";
       default:
         return true; // Other steps will implement their own readiness logic
     }
@@ -117,14 +118,7 @@ export function Wizard() {
       case "model-local":
         return <ModelLocalStep />;
       case "model-cloud":
-        return (
-          <div className="text-slate-700">
-            <p>Current wizard step: <strong>{wizardStep}</strong></p>
-            <p className="text-sm text-slate-500 mt-2">
-              Placeholder — will be implemented in Task 6
-            </p>
-          </div>
-        );
+        return <ModelCloudStep />;
       case "deploy":
         return (
           <div className="text-slate-700">
