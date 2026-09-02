@@ -49,7 +49,7 @@ export function DeployStep() {
       setProgressLabel(`Deploying ${selectedFrameworkId}...`);
 
       // Build advanced options from frameworkConfig (Task 6)
-      const advanced: import("../../shared/v2-types").FrameworkDeployOptions = {};
+      const advanced: import("@shared/v2-types").FrameworkDeployOptions = {};
       if (frameworkConfig.persona?.trim()) {
         advanced.persona = frameworkConfig.persona;
       }
