@@ -99,6 +99,16 @@ export class Database {
       );
 
       CREATE INDEX IF NOT EXISTS idx_capabilities_deployment_id ON capabilities(deployment_id);
+
+      CREATE TABLE IF NOT EXISTS channels (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        deployment_id TEXT NOT NULL REFERENCES deployments(id),
+        channel_id TEXT NOT NULL,
+        secret_ref TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_channels_deployment_id ON channels(deployment_id);
     `);
 
     // Migration: ensure extra_json exists on model_backends created before this column was added.
@@ -362,6 +372,31 @@ export class Database {
     this.db
       .prepare("DELETE FROM deployments WHERE id = ?")
       .run(id);
+  }
+
+  recordChannel(c: { deploymentId: string; channelId: string; secretRef: string | null }): void {
+    this.db
+      .prepare(
+        `INSERT INTO channels (deployment_id, channel_id, secret_ref)
+         VALUES (?, ?, ?)`
+      )
+      .run(c.deploymentId, c.channelId, c.secretRef);
+  }
+
+  getChannels(deploymentId: string): Array<{ channelId: string; secretRef: string | null }> {
+    return this.db
+      .prepare("SELECT channel_id, secret_ref FROM channels WHERE deployment_id = ?")
+      .all(deploymentId)
+      .map((row: any) => ({
+        channelId: row.channel_id,
+        secretRef: row.secret_ref,
+      }));
+  }
+
+  removeChannelRecord(deploymentId: string, channelId: string): void {
+    this.db
+      .prepare("DELETE FROM channels WHERE deployment_id = ? AND channel_id = ?")
+      .run(deploymentId, channelId);
   }
 
   close(): void {
