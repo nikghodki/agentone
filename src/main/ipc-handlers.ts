@@ -166,6 +166,34 @@ export async function handleRemoveCapability(
   return result;
 }
 
+/**
+ * Handler for remove-deployment IPC call.
+ * Stops the deployment adapter (if running) and always deletes the DB row.
+ * For teardown operations, we want the row gone even if adapter.stop() fails.
+ */
+export async function handleRemoveDeployment(
+  deploymentId: string,
+  deps: {
+    db: Database;
+    getAdapter: (id: string) => FrameworkAdapter | undefined;
+  }
+): Promise<void> {
+  const adapter = deps.getAdapter(deploymentId);
+
+  // Try to stop the adapter gracefully, but don't block deletion if it fails
+  if (adapter) {
+    try {
+      await adapter.stop();
+    } catch (error) {
+      // Log the error but proceed with deletion — a dead adapter shouldn't block removal
+      console.error(`Failed to stop adapter for deployment ${deploymentId}:`, error);
+    }
+  }
+
+  // Always delete the deployment record (and its capabilities via CASCADE)
+  deps.db.deleteDeployment(deploymentId);
+}
+
 export function registerIpcHandlers(db: Database, rateLimiter: RateLimiter, secrets: Secrets) {
   const paths = getAppPaths();
 
@@ -407,6 +435,15 @@ export function registerIpcHandlers(db: Database, rateLimiter: RateLimiter, secr
       getAdapter: (id) => deploymentRegistry.get(id)?.adapter
     })
   );
+
+  ipcMain.handle("remove-deployment", async (_e, deploymentId: string) => {
+    await handleRemoveDeployment(deploymentId, {
+      db,
+      getAdapter: (id) => deploymentRegistry.get(id)?.adapter
+    });
+    // Remove from registry after deletion
+    deploymentRegistry.delete(deploymentId);
+  });
 }
 
 export function shutdownServices() {

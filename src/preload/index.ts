@@ -61,6 +61,8 @@ const api: ElectronAPI = {
     ipcRenderer.invoke("get-capabilities", deploymentId),
   removeCapability: (deploymentId, spec) =>
     ipcRenderer.invoke("remove-capability", deploymentId, spec),
+  removeDeployment: (deploymentId) =>
+    ipcRenderer.invoke("remove-deployment", deploymentId),
 };
 
 contextBridge.exposeInMainWorld("electronAPI", api);
