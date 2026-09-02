@@ -13,7 +13,10 @@ export type AppView =
   | "v2-framework-select"
   | "v2-model-backend"
   | "task"
-  | "capabilities";
+  | "capabilities"
+  | "wizard";
+
+export type WizardStep = "framework" | "config" | "model-location" | "model-local" | "model-cloud" | "deploy";
 
 interface GuidedTaskContext {
   personaId: string;
@@ -53,6 +56,20 @@ interface AppState {
   taskStreamText: string;
   taskStatus: string | null;
 
+  // wizard state
+  wizardStep: WizardStep;
+  frameworkConfig: { persona?: string; port?: number };
+  cloudForm: {
+    apiKey: string;
+    resourceUrl: string;
+    deployment: string;
+    apiVersion: string;
+    region: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    modelPath?: string;
+  };
+
   setView: (view: AppView) => void;
   selectPersona: (id: string) => void;
   setPriorities: (priorities: string[]) => void;
@@ -78,13 +95,18 @@ interface AppState {
   clearTaskStreamText: () => void;
   setTaskStatus: (status: string | null) => void;
   clearTaskStatus: () => void;
+
+  // wizard actions
+  setWizardStep: (step: WizardStep) => void;
+  patchWizard: (partial: Partial<Pick<AppState, "frameworkConfig" | "cloudForm">>) => void;
+  resetWizard: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  // v2 first-run enters the framework launcher (spec §5): choose framework →
-  // model backend → deploy (installs the framework) → task. The v1 "setup"
-  // persona/Ollama flow is deferred (spec §12.1) and no longer the entry point.
-  view: "v2-framework-select",
+  // v2 first-run enters the guided wizard (redesign spec): choose framework →
+  // config → model → deploy → task. The v1 "setup" persona/Ollama flow is
+  // deferred and no longer the entry point.
+  view: "wizard",
   selectedPersonaId: null,
   selectedPriorities: [],
   personas: [],
@@ -115,6 +137,20 @@ export const useAppStore = create<AppState>((set) => ({
   taskStreamText: "",
   taskStatus: null,
 
+  // wizard initial state
+  wizardStep: "framework",
+  frameworkConfig: {},
+  cloudForm: {
+    apiKey: "",
+    resourceUrl: "",
+    deployment: "",
+    apiVersion: "",
+    region: "",
+    accessKeyId: "",
+    secretAccessKey: "",
+    modelPath: "",
+  },
+
   setView: (view) => set({ view }),
   selectPersona: (id) => set({ selectedPersonaId: id }),
   setPriorities: (priorities) => set({ selectedPriorities: priorities }),
@@ -142,4 +178,31 @@ export const useAppStore = create<AppState>((set) => ({
   clearTaskStreamText: () => set({ taskStreamText: "" }),
   setTaskStatus: (status) => set({ taskStatus: status }),
   clearTaskStatus: () => set({ taskStatus: null }),
+
+  // wizard actions
+  setWizardStep: (step) => set({ wizardStep: step }),
+  patchWizard: (partial) =>
+    set((s) => ({
+      ...(partial.frameworkConfig && {
+        frameworkConfig: { ...s.frameworkConfig, ...partial.frameworkConfig },
+      }),
+      ...(partial.cloudForm && {
+        cloudForm: { ...s.cloudForm, ...partial.cloudForm },
+      }),
+    })),
+  resetWizard: () =>
+    set({
+      wizardStep: "framework",
+      frameworkConfig: {},
+      cloudForm: {
+        apiKey: "",
+        resourceUrl: "",
+        deployment: "",
+        apiVersion: "",
+        region: "",
+        accessKeyId: "",
+        secretAccessKey: "",
+        modelPath: "",
+      },
+    }),
 }));
