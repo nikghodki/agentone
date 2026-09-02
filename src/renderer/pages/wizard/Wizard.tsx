@@ -3,6 +3,8 @@ import { useAppStore, WizardStep } from "../../store";
 import { WizardLayout } from "../../components/WizardLayout";
 import { FrameworkStep } from "./FrameworkStep";
 import { ConfigStep } from "./ConfigStep";
+import { ModelLocationStep } from "./ModelLocationStep";
+import { ModelLocalStep } from "./ModelLocalStep";
 
 // Map wizard steps to the 4 visible groups in StepProgress
 function getStepProgressKey(wizardStep: WizardStep): string {
@@ -23,15 +25,15 @@ function getStepProgressKey(wizardStep: WizardStep): string {
 }
 
 // Get the next step in the linear flow
-function getNextStep(current: WizardStep, modelChoice?: "local" | "cloud"): WizardStep | null {
+function getNextStep(current: WizardStep, modelBackendKind?: string): WizardStep | null {
   switch (current) {
     case "framework":
       return "config";
     case "config":
       return "model-location";
     case "model-location":
-      // Branch based on model choice (placeholder heuristic for now)
-      return modelChoice === "cloud" ? "model-cloud" : "model-local";
+      // Branch based on model backend kind set by ModelLocationStep
+      return modelBackendKind === "cloud" ? "model-cloud" : "model-local";
     case "model-local":
     case "model-cloud":
       return "deploy";
@@ -43,7 +45,7 @@ function getNextStep(current: WizardStep, modelChoice?: "local" | "cloud"): Wiza
 }
 
 // Get the previous step in the linear flow
-function getPreviousStep(current: WizardStep): WizardStep | null {
+function getPreviousStep(current: WizardStep, modelBackendKind?: string): WizardStep | null {
   switch (current) {
     case "framework":
       return null; // First step
@@ -55,8 +57,8 @@ function getPreviousStep(current: WizardStep): WizardStep | null {
     case "model-cloud":
       return "model-location";
     case "deploy":
-      // Return to the model step we came from (placeholder: always local for now)
-      return "model-local";
+      // Return to the model step we came from, inferred from modelBackendDraft.kind
+      return modelBackendKind === "cloud" ? "model-cloud" : "model-local";
     default:
       return null;
   }
@@ -65,23 +67,24 @@ function getPreviousStep(current: WizardStep): WizardStep | null {
 export function Wizard() {
   const wizardStep = useAppStore((s) => s.wizardStep);
   const selectedFrameworkId = useAppStore((s) => s.selectedFrameworkId);
+  const modelBackendDraft = useAppStore((s) => s.modelBackendDraft);
   const setWizardStep = useAppStore((s) => s.setWizardStep);
 
   const handleBack = () => {
-    const prev = getPreviousStep(wizardStep);
+    const prev = getPreviousStep(wizardStep, modelBackendDraft.kind);
     if (prev) {
       setWizardStep(prev);
     }
   };
 
   const handleContinue = () => {
-    const next = getNextStep(wizardStep, "local"); // Default to local for now
+    const next = getNextStep(wizardStep, modelBackendDraft.kind);
     if (next) {
       setWizardStep(next);
     }
   };
 
-  const canGoBack = getPreviousStep(wizardStep) !== null;
+  const canGoBack = getPreviousStep(wizardStep, modelBackendDraft.kind) !== null;
   const stepProgressKey = getStepProgressKey(wizardStep);
 
   // Determine if current step is ready to continue
@@ -91,6 +94,12 @@ export function Wizard() {
         return selectedFrameworkId !== null && selectedFrameworkId !== "";
       case "config":
         return true; // Config step is always ready (no required fields)
+      case "model-location":
+        return modelBackendDraft.kind !== null && modelBackendDraft.kind !== "";
+      case "model-local":
+        return modelBackendDraft.model !== null && modelBackendDraft.model !== "";
+      case "model-cloud":
+        return true; // Cloud step will validate its own fields
       default:
         return true; // Other steps will implement their own readiness logic
     }
@@ -103,12 +112,34 @@ export function Wizard() {
         return <FrameworkStep />;
       case "config":
         return <ConfigStep />;
+      case "model-location":
+        return <ModelLocationStep />;
+      case "model-local":
+        return <ModelLocalStep />;
+      case "model-cloud":
+        return (
+          <div className="text-slate-700">
+            <p>Current wizard step: <strong>{wizardStep}</strong></p>
+            <p className="text-sm text-slate-500 mt-2">
+              Placeholder — will be implemented in Task 6
+            </p>
+          </div>
+        );
+      case "deploy":
+        return (
+          <div className="text-slate-700">
+            <p>Current wizard step: <strong>{wizardStep}</strong></p>
+            <p className="text-sm text-slate-500 mt-2">
+              Placeholder — will be implemented in Task 7
+            </p>
+          </div>
+        );
       default:
         return (
           <div className="text-slate-700">
             <p>Current wizard step: <strong>{wizardStep}</strong></p>
             <p className="text-sm text-slate-500 mt-2">
-              Placeholder — will be implemented in Tasks 5-7
+              Placeholder
             </p>
           </div>
         );
