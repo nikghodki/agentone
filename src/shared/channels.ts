@@ -59,7 +59,7 @@ export const CHANNELS: ChannelDef[] = [
         placeholder: "xapp-..."
       }
     ],
-    frameworks: ["openclaw", "zeptoclaw", "hermes"],
+    frameworks: [], // per-framework config mapping deferred to Slice 2c
     instructions: "Create a Slack app at api.slack.com/apps. Enable Socket Mode and generate an app-level token. Install the app to your workspace and copy the bot token from OAuth & Permissions. Get the signing secret from Basic Information."
   },
   {
@@ -75,7 +75,7 @@ export const CHANNELS: ChannelDef[] = [
         placeholder: "Your bot token"
       }
     ],
-    frameworks: ["openclaw", "zeptoclaw", "hermes"],
+    frameworks: [], // per-framework config mapping deferred to Slice 2c
     instructions: "Go to Discord Developer Portal (discord.com/developers/applications). Create a new application, navigate to the Bot section, and create a bot. Copy the bot token. Enable necessary intents (Message Content, Server Members, etc.)."
   },
   {
@@ -105,7 +105,7 @@ export const CHANNELS: ChannelDef[] = [
         placeholder: "Your verify token"
       }
     ],
-    frameworks: ["zeptoclaw", "hermes"],
+    frameworks: [], // per-framework config mapping deferred to Slice 2c
     instructions: "Set up WhatsApp Business API through Meta Business. Create a business account, add a phone number, and generate an access token. Configure webhook with a verify token. Note: Requires a public HTTPS webhook endpoint."
   }
 ];

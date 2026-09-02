@@ -1626,9 +1626,10 @@ MCP Servers (1/1 ready)
   });
 
   describe("verifyChannel()", () => {
-    it("runs channels status --probe and parses connected=true from success output", async () => {
+    it("runs channels status --probe and parses connected=true from real E2E output (running/configured)", async () => {
       const mockExecWithArgs = vi.fn().mockResolvedValue({
-        stdout: "Channel telegram: connected\nProbe successful",
+        // REAL output with valid token (per phase2a-channel-e2e.md)
+        stdout: "Checking channel status (probe)…\nGateway reachable.\n- Telegram default: enabled, configured, running, mode:polling",
         stderr: "",
       });
 
@@ -1648,9 +1649,10 @@ MCP Servers (1/1 ready)
       });
     });
 
-    it("runs channels status --probe and parses connected=false from failure output (no throw)", async () => {
+    it("runs channels status --probe and parses connected=false from real E2E output (not configured/stopped)", async () => {
       const mockExecWithArgs = vi.fn().mockResolvedValue({
-        stdout: "Channel telegram: authentication failed\nProbe failed: invalid token",
+        // REAL output with dummy token (per phase2a-channel-e2e.md)
+        stdout: "Checking channel status (probe)…\nGateway reachable.\n- Telegram default: enabled, not configured, stopped, mode:polling",
         stderr: "",
       });
 
@@ -1660,7 +1662,7 @@ MCP Servers (1/1 ready)
 
       expect(result).toEqual({
         connected: false,
-        detail: expect.stringContaining("failed"),
+        detail: expect.any(String),
       });
     });
 
@@ -1740,17 +1742,12 @@ MCP Servers (1/1 ready)
   });
 
   describe("listChannels()", () => {
-    it("parses channels list output into array with id, enabled, connected", async () => {
+    it("parses real E2E line format into array with id, enabled, connected", async () => {
       const mockExecWithArgs = vi.fn().mockResolvedValue({
-        stdout: `
-Channels:
-┌──────────┬──────────────────────────┬─────────────┐
-│ Channel  │ Status                   │ Connected   │
-├──────────┼──────────────────────────┼─────────────┤
-│ telegram │ enabled                  │ yes         │
-│ discord  │ enabled                  │ yes         │
-│ slack    │ disabled                 │ no          │
-`,
+        // REAL output format from phase2a-channel-e2e.md
+        stdout: `Chat channels:
+- Telegram default: installed, configured, enabled, token=***
+- Discord default: installed, not configured, enabled, token=***`,
         stderr: "",
       });
 
@@ -1764,7 +1761,7 @@ Channels:
         expect.any(Object)
       );
 
-      expect(channels).toHaveLength(3);
+      expect(channels).toHaveLength(2);
       expect(channels?.[0]).toEqual({
         id: "telegram",
         enabled: true,
@@ -1773,18 +1770,14 @@ Channels:
       expect(channels?.[1]).toEqual({
         id: "discord",
         enabled: true,
-        connected: true,
-      });
-      expect(channels?.[2]).toEqual({
-        id: "slack",
-        enabled: false,
         connected: false,
       });
     });
 
-    it("returns empty array when no channels configured", async () => {
+    it("returns empty array when no channels configured (real E2E empty state)", async () => {
       const mockExecWithArgs = vi.fn().mockResolvedValue({
-        stdout: "No channels configured\n",
+        // REAL empty state format from phase2a-channel-e2e.md
+        stdout: "Chat channels:\n- no configured chat channels (run `openclaw channels list --all` to see installable channels)",
         stderr: "",
       });
 

@@ -19,7 +19,7 @@ describe("Channel Catalog", () => {
     expect(telegram!.instructions).toBeTruthy();
   });
 
-  it("includes slack with three secret fields", () => {
+  it("includes slack with three secret fields (frameworks deferred to 2c)", () => {
     const slack = CHANNELS.find((c) => c.id === "slack");
     expect(slack).toBeDefined();
     expect(slack!.name).toBe("Slack");
@@ -39,13 +39,12 @@ describe("Channel Catalog", () => {
     expect(appToken).toBeDefined();
     expect(appToken!.secret).toBe(true);
 
-    expect(slack!.frameworks).toContain("openclaw");
-    expect(slack!.frameworks).toContain("zeptoclaw");
-    expect(slack!.frameworks).toContain("hermes");
+    // Slice 2a: only telegram verified; slack deferred to 2c
+    expect(slack!.frameworks).toEqual([]);
     expect(slack!.instructions).toBeTruthy();
   });
 
-  it("includes discord with botToken secret field", () => {
+  it("includes discord with botToken secret field (frameworks deferred to 2c)", () => {
     const discord = CHANNELS.find((c) => c.id === "discord");
     expect(discord).toBeDefined();
     expect(discord!.name).toBe("Discord");
@@ -55,15 +54,22 @@ describe("Channel Catalog", () => {
     expect(botTokenField).toBeDefined();
     expect(botTokenField!.secret).toBe(true);
 
-    expect(discord!.frameworks).toContain("openclaw");
-    expect(discord!.frameworks).toContain("zeptoclaw");
-    expect(discord!.frameworks).toContain("hermes");
+    // Slice 2a: only telegram verified; discord deferred to 2c
+    expect(discord!.frameworks).toEqual([]);
     expect(discord!.instructions).toBeTruthy();
   });
 
-  it("all channels have non-empty frameworks arrays", () => {
-    CHANNELS.forEach((channel) => {
-      expect(channel.frameworks.length).toBeGreaterThan(0);
-    });
+  it("telegram has frameworks; slack/discord/whatsapp_cloud deferred to 2c (empty frameworks)", () => {
+    const telegram = CHANNELS.find((c) => c.id === "telegram");
+    expect(telegram!.frameworks).toEqual(["openclaw", "zeptoclaw", "hermes"]);
+
+    const slack = CHANNELS.find((c) => c.id === "slack");
+    expect(slack!.frameworks).toEqual([]);
+
+    const discord = CHANNELS.find((c) => c.id === "discord");
+    expect(discord!.frameworks).toEqual([]);
+
+    const whatsapp = CHANNELS.find((c) => c.id === "whatsapp_cloud");
+    expect(whatsapp!.frameworks).toEqual([]);
   });
 });

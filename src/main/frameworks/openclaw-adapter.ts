@@ -915,7 +915,12 @@ export class OpenclawAdapter implements FrameworkAdapter {
 
   /**
    * Verify a channel is connected by running a probe.
-   * Per verified research: `openclaw channels status --channel <id> --probe`
+   * Per verified research (phase2a-channel-e2e.md):
+   * `openclaw channels status --channel <id> --probe`
+   *
+   * Real output format:
+   * - Connected: "- Telegram default: enabled, configured, running, mode:polling"
+   * - Not connected: "- Telegram default: enabled, not configured, stopped, mode:polling"
    *
    * Returns {connected: boolean, detail?: string}.
    * Does NOT throw on probe failure - returns connected:false instead.
@@ -933,12 +938,14 @@ export class OpenclawAdapter implements FrameworkAdapter {
         { env }
       );
 
-      // Parse output to determine connection status
+      // Parse output to determine connection status (per E2E doc)
       const output = result.stdout.toLowerCase();
-      const isConnected = output.includes("connected") || output.includes("successful");
+      const isRunning = output.includes("running");
+      const isConfigured = output.includes("configured") && !output.includes("not configured");
+      const isStopped = output.includes("stopped");
 
       return {
-        connected: isConnected,
+        connected: (isRunning || isConfigured) && !isStopped && !output.includes("not configured"),
         detail: result.stdout.trim(),
       };
     } catch (error) {
@@ -967,8 +974,14 @@ export class OpenclawAdapter implements FrameworkAdapter {
 
   /**
    * List all configured channels.
-   * Per verified research: `openclaw channels list`
-   * Parses box-drawing table format (similar to listCapabilities).
+   * Per verified research (phase2a-channel-e2e.md):
+   * `openclaw channels list`
+   *
+   * Real output format:
+   * - Line: "- Telegram default: installed, not configured, enabled, token=***"
+   * - Empty: "no configured chat channels"
+   *
+   * Parses line format (NOT box-table).
    */
   async listChannels(): Promise<Array<{ id: string; enabled: boolean; connected?: boolean }>> {
     const bin = this.getOpenclawBinary();
@@ -977,37 +990,33 @@ export class OpenclawAdapter implements FrameworkAdapter {
     try {
       const result = await this.execWithArgsFn(bin, ["channels", "list"], { env });
 
-      // Handle "No channels configured" message
-      if (result.stdout.includes("No channels configured")) {
+      // Handle empty state (real format per E2E)
+      if (result.stdout.toLowerCase().includes("no configured chat channels")) {
         return [];
       }
 
-      // Parse table format
+      // Parse line format
       const channels: Array<{ id: string; enabled: boolean; connected?: boolean }> = [];
       const lines = result.stdout.split("\n");
 
       for (const line of lines) {
-        // Skip non-data rows: borders, header
-        if (!line.includes("│")) continue;
-        if (line.includes("Channel") || line.includes("Status")) continue;
+        // Match lines like: "- Telegram default: installed, not configured, enabled, token=***"
+        if (!line.trim().startsWith("- ")) continue;
+        if (line.includes("no configured")) continue;
 
-        // Split on column separator
-        const columns = line.split("│").map(col => col.trim());
+        // Example: "- Telegram default: installed, not configured, enabled, token=***"
+        const match = line.match(/^- (\w+) (\w+): (.+)$/);
+        if (!match) continue;
 
-        // Need at least 3 columns: empty, channel, status, connected
-        if (columns.length < 4) continue;
-
-        const channelId = columns[1];
-        const status = columns[2];
-        const connectedStr = columns[3];
-
-        // Skip if channel name is empty (continuation row)
-        if (!channelId) continue;
+        const [, channelId, , statusPart] = match;
+        const statusLower = statusPart.toLowerCase();
+        const enabled = statusLower.includes("enabled");
+        const configured = statusLower.includes("configured") && !statusLower.includes("not configured");
 
         channels.push({
-          id: channelId,
-          enabled: status.toLowerCase().includes("enabled"),
-          connected: connectedStr.toLowerCase().includes("yes"),
+          id: channelId.toLowerCase(),
+          enabled,
+          connected: configured,
         });
       }
 
