@@ -63,6 +63,13 @@ const api: ElectronAPI = {
     ipcRenderer.invoke("remove-capability", deploymentId, spec),
   removeDeployment: (deploymentId) =>
     ipcRenderer.invoke("remove-deployment", deploymentId),
+
+  configureChannel: (deploymentId, spec) =>
+    ipcRenderer.invoke("configure-channel", deploymentId, spec),
+  listChannels: (deploymentId) =>
+    ipcRenderer.invoke("list-channels", deploymentId),
+  removeChannel: (deploymentId, id) =>
+    ipcRenderer.invoke("remove-channel", deploymentId, id),
 };
 
 contextBridge.exposeInMainWorld("electronAPI", api);

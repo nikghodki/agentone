@@ -194,6 +194,173 @@ export async function handleRemoveDeployment(
   deps.db.deleteDeployment(deploymentId);
 }
 
+/**
+ * Handler for configure-channel IPC call.
+ * Config → monitored restart → verify flow.
+ */
+export async function handleConfigureChannel(
+  deploymentId: string,
+  spec: { id: string; config: Record<string, string>; secrets: Record<string, string> },
+  deps: {
+    db: Database;
+    getAdapter: (id: string) => FrameworkAdapter | undefined;
+    secrets: Secrets;
+  }
+): Promise<{ connected: boolean; detail?: string }> {
+  const adapter = deps.getAdapter(deploymentId);
+
+  if (!adapter || !adapter.configureChannel) {
+    throw new Error("This framework does not support channel setup.");
+  }
+
+  // Store each secret (NEVER log the values)
+  for (const [field, value] of Object.entries(spec.secrets)) {
+    deps.secrets.set(`channel:${deploymentId}:${spec.id}:${field}`, value);
+  }
+
+  // Configure the channel on the adapter
+  await adapter.configureChannel({ id: spec.id, config: spec.config, secrets: spec.secrets });
+
+  // Monitored restart if required
+  if (adapter.requiresRestartAfterChannelChange?.()) {
+    try {
+      await adapter.stop();
+      await adapter.start();
+
+      // Poll status until healthy with timeout
+      const timeoutMs = 10000;
+      const intervalMs = 500;
+      const startTime = Date.now();
+      let isHealthy = false;
+
+      while (Date.now() - startTime < timeoutMs) {
+        const status = await adapter.status();
+        if (status === "healthy") {
+          isHealthy = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      }
+
+      if (!isHealthy) {
+        // Restart completed but didn't reach healthy status
+        deps.db.recordChannel({
+          deploymentId,
+          channelId: spec.id,
+          secretRef: `channel:${deploymentId}:${spec.id}`,
+        });
+        return {
+          connected: false,
+          detail: "Gateway restart timeout: status did not reach healthy",
+        };
+      }
+    } catch (error) {
+      // Restart failed
+      deps.db.recordChannel({
+        deploymentId,
+        channelId: spec.id,
+        secretRef: `channel:${deploymentId}:${spec.id}`,
+      });
+      return {
+        connected: false,
+        detail: `Gateway restart failed: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  }
+
+  // Verify the channel
+  const result = adapter.verifyChannel
+    ? await adapter.verifyChannel(spec.id)
+    : { connected: false, detail: "Verify unsupported by this framework" };
+
+  // Record the channel in the database
+  deps.db.recordChannel({
+    deploymentId,
+    channelId: spec.id,
+    secretRef: `channel:${deploymentId}:${spec.id}`,
+  });
+
+  return result;
+}
+
+/**
+ * Handler for list-channels IPC call.
+ */
+export async function handleListChannels(
+  deploymentId: string,
+  deps: {
+    db: Database;
+    getAdapter: (id: string) => FrameworkAdapter | undefined;
+    secrets: Secrets;
+  }
+): Promise<Array<{ id: string; enabled: boolean; connected?: boolean }>> {
+  const adapter = deps.getAdapter(deploymentId);
+
+  if (!adapter || !adapter.listChannels) {
+    return [];
+  }
+
+  return await adapter.listChannels();
+}
+
+/**
+ * Handler for remove-channel IPC call.
+ */
+export async function handleRemoveChannel(
+  deploymentId: string,
+  id: string,
+  deps: {
+    db: Database;
+    getAdapter: (id: string) => FrameworkAdapter | undefined;
+    secrets: Secrets;
+  }
+): Promise<{ removed: boolean; note?: string }> {
+  const adapter = deps.getAdapter(deploymentId);
+
+  if (!adapter) {
+    throw new Error(`Deployment "${deploymentId}" not found or not running`);
+  }
+
+  if (!adapter.removeChannel) {
+    throw new Error("This framework does not support channel removal.");
+  }
+
+  // Remove channel from the adapter
+  const result = await adapter.removeChannel(id);
+
+  // Monitored restart if required
+  if (adapter.requiresRestartAfterChannelChange?.()) {
+    await adapter.stop();
+    await adapter.start();
+
+    // Poll status until healthy with timeout
+    const timeoutMs = 10000;
+    const intervalMs = 500;
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeoutMs) {
+      const status = await adapter.status();
+      if (status === "healthy") {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+  }
+
+  // Remove channel record from database
+  deps.db.removeChannelRecord(deploymentId, id);
+
+  // Delete all secrets for this channel
+  // Secrets are stored as: channel:deploymentId:channelId:field
+  // We need to delete all field variants (botToken, otherSecret, etc.)
+  const secretFields = ["botToken", "otherSecret", "token", "signingSecret", "appToken"];
+  for (const field of secretFields) {
+    deps.secrets.delete(`channel:${deploymentId}:${id}:${field}`);
+  }
+
+  return result;
+}
+
 export function registerIpcHandlers(db: Database, rateLimiter: RateLimiter, secrets: Secrets) {
   const paths = getAppPaths();
 
@@ -444,6 +611,32 @@ export function registerIpcHandlers(db: Database, rateLimiter: RateLimiter, secr
     // Remove from registry after deletion
     deploymentRegistry.delete(deploymentId);
   });
+
+  ipcMain.handle(
+    "configure-channel",
+    (_e, deploymentId: string, spec: { id: string; config: Record<string, string>; secrets: Record<string, string> }) =>
+      handleConfigureChannel(deploymentId, spec, {
+        db,
+        getAdapter: (id) => deploymentRegistry.get(id)?.adapter,
+        secrets,
+      })
+  );
+
+  ipcMain.handle("list-channels", (_e, deploymentId: string) =>
+    handleListChannels(deploymentId, {
+      db,
+      getAdapter: (id) => deploymentRegistry.get(id)?.adapter,
+      secrets,
+    })
+  );
+
+  ipcMain.handle("remove-channel", (_e, deploymentId: string, id: string) =>
+    handleRemoveChannel(deploymentId, id, {
+      db,
+      getAdapter: (id) => deploymentRegistry.get(id)?.adapter,
+      secrets,
+    })
+  );
 }
 
 export function shutdownServices() {

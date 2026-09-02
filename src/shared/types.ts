@@ -134,6 +134,13 @@ export interface ElectronAPI {
     spec: { type: string; name: string }
   ) => Promise<{ frameworkRemoved: boolean; note?: string }>;
   removeDeployment: (deploymentId: string) => Promise<void>;
+
+  configureChannel: (
+    deploymentId: string,
+    spec: { id: string; config: Record<string, string>; secrets: Record<string, string> }
+  ) => Promise<{ connected: boolean; detail?: string }>;
+  listChannels: (deploymentId: string) => Promise<Array<{ id: string; enabled: boolean; connected?: boolean }>>;
+  removeChannel: (deploymentId: string, id: string) => Promise<{ removed: boolean; note?: string }>;
 }
 
 declare global {
