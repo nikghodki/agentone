@@ -6,6 +6,7 @@ import { ConfigStep } from "./ConfigStep";
 import { ModelLocationStep } from "./ModelLocationStep";
 import { ModelLocalStep } from "./ModelLocalStep";
 import { ModelCloudStep } from "./ModelCloudStep";
+import { DeployStep } from "./DeployStep";
 
 // Map wizard steps to the 4 visible groups in StepProgress
 function getStepProgressKey(wizardStep: WizardStep): string {
@@ -120,14 +121,7 @@ export function Wizard() {
       case "model-cloud":
         return <ModelCloudStep />;
       case "deploy":
-        return (
-          <div className="text-slate-700">
-            <p>Current wizard step: <strong>{wizardStep}</strong></p>
-            <p className="text-sm text-slate-500 mt-2">
-              Placeholder — will be implemented in Task 7
-            </p>
-          </div>
-        );
+        return <DeployStep />;
       default:
         return (
           <div className="text-slate-700">
