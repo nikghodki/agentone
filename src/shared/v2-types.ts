@@ -40,4 +40,9 @@ export interface FrameworkAdapter {
   requiresRestartAfterInstall(): boolean;
   restart(): Promise<void>;
   detectGap?(input: string): Promise<{ type: "skill" | "mcp" | "plugin"; name: string } | null>;
+  listChannels?(): Promise<Array<{ id: string; enabled: boolean; connected?: boolean }>>;
+  configureChannel?(spec: { id: string; config: Record<string, string>; secrets: Record<string, string> }): Promise<void>;
+  removeChannel?(id: string): Promise<{ removed: boolean; note?: string }>;
+  verifyChannel?(id: string): Promise<{ connected: boolean; detail?: string }>;
+  requiresRestartAfterChannelChange?(): boolean;
 }

@@ -163,4 +163,48 @@ describe("Database", () => {
       expect(db.getCapabilities(dep.id)).toHaveLength(0);
     });
   });
+
+  describe("channels", () => {
+    it("records and retrieves channels for a deployment", () => {
+      db.seedFrameworks([{ id: "openclaw", name: "OpenClaw", features: ["a","b","c","d","e"], installRecipe: {} }]);
+      const dep = db.createDeployment({ frameworkId: "openclaw", location: "local", remoteUrl: null, modelBackendId: null });
+
+      db.recordChannel({ deploymentId: dep.id, channelId: "telegram", secretRef: "channel:telegram:token" });
+      db.recordChannel({ deploymentId: dep.id, channelId: "slack", secretRef: "channel:slack:token" });
+
+      const channels = db.getChannels(dep.id);
+      expect(channels).toHaveLength(2);
+      expect(channels).toContainEqual({ channelId: "telegram", secretRef: "channel:telegram:token" });
+      expect(channels).toContainEqual({ channelId: "slack", secretRef: "channel:slack:token" });
+    });
+
+    it("returns empty array when no channels exist for deployment", () => {
+      db.seedFrameworks([{ id: "openclaw", name: "OpenClaw", features: ["a","b","c","d","e"], installRecipe: {} }]);
+      const dep = db.createDeployment({ frameworkId: "openclaw", location: "local", remoteUrl: null, modelBackendId: null });
+      expect(db.getChannels(dep.id)).toEqual([]);
+    });
+
+    it("removeChannelRecord deletes only the matching channel row", () => {
+      db.seedFrameworks([{ id: "openclaw", name: "OpenClaw", features: ["a","b","c","d","e"], installRecipe: {} }]);
+      const dep = db.createDeployment({ frameworkId: "openclaw", location: "local", remoteUrl: null, modelBackendId: null });
+
+      db.recordChannel({ deploymentId: dep.id, channelId: "telegram", secretRef: "channel:telegram:token" });
+      db.recordChannel({ deploymentId: dep.id, channelId: "slack", secretRef: "channel:slack:token" });
+      db.recordChannel({ deploymentId: dep.id, channelId: "discord", secretRef: "channel:discord:token" });
+
+      db.removeChannelRecord(dep.id, "slack");
+
+      const remaining = db.getChannels(dep.id);
+      expect(remaining).toHaveLength(2);
+      expect(remaining).toContainEqual({ channelId: "telegram", secretRef: "channel:telegram:token" });
+      expect(remaining).toContainEqual({ channelId: "discord", secretRef: "channel:discord:token" });
+      expect(remaining.find(c => c.channelId === "slack")).toBeUndefined();
+    });
+
+    it("removeChannelRecord is a no-op when channel does not exist", () => {
+      db.seedFrameworks([{ id: "openclaw", name: "OpenClaw", features: ["a","b","c","d","e"], installRecipe: {} }]);
+      const dep = db.createDeployment({ frameworkId: "openclaw", location: "local", remoteUrl: null, modelBackendId: null });
+      expect(() => db.removeChannelRecord(dep.id, "nonexistent")).not.toThrow();
+    });
+  });
 });

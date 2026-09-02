@@ -1491,4 +1491,311 @@ MCP Servers (1/1 ready)
       });
     });
   });
+
+  // ========================================================================
+  // TASK 2 (Phase 2a): Channel methods
+  // ========================================================================
+
+  describe("configureChannel()", () => {
+    it("runs channels add with --use-env flag and injects token via env (recommended approach)", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "Channel added successfully",
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      await adapter.configureChannel?.({
+        id: "telegram",
+        config: {},
+        secrets: { botToken: "test-bot-token-123" },
+      });
+
+      // Verify channels add command was called with --use-env
+      expect(mockExecWithArgs).toHaveBeenCalledWith(
+        expect.stringContaining("openclaw"),
+        ["channels", "add", "--channel", "telegram", "--use-env"],
+        expect.objectContaining({
+          env: expect.objectContaining({
+            TELEGRAM_BOT_TOKEN: "test-bot-token-123",
+          }),
+        })
+      );
+    });
+
+    it("uses sandboxed Node-22 env with explicit PATH (no ~/.local/bin)", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "Channel added successfully",
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      await adapter.configureChannel?.({
+        id: "telegram",
+        config: {},
+        secrets: { botToken: "test-token" },
+      });
+
+      // Verify sandboxed env was passed
+      const call = mockExecWithArgs.mock.calls[0];
+      const opts = call[2];
+      expect(opts.env).toBeDefined();
+      expect(opts.env.PATH).toBeDefined();
+
+      // CRITICAL: PATH must NOT contain ~/.local/bin
+      expect(opts.env.PATH).not.toContain(".local/bin");
+      expect(opts.env.PATH).not.toBe(process.env.PATH);
+    });
+
+    it("validates channel id to prevent command injection", async () => {
+      adapter = new OpenclawAdapter(tempDir);
+
+      // Shell injection attempts should be rejected
+      await expect(
+        adapter.configureChannel?.({ id: "telegram; rm -rf /", config: {}, secrets: { botToken: "T" } })
+      ).rejects.toThrow(/Invalid/);
+
+      await expect(
+        adapter.configureChannel?.({ id: "telegram && whoami", config: {}, secrets: { botToken: "T" } })
+      ).rejects.toThrow(/Invalid/);
+    });
+
+    it("maps different channel types to correct env var names", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "Channel added successfully",
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      // Test telegram
+      await adapter.configureChannel?.({
+        id: "telegram",
+        config: {},
+        secrets: { botToken: "telegram-token" },
+      });
+      let call = mockExecWithArgs.mock.calls[0];
+      expect(call[2].env.TELEGRAM_BOT_TOKEN).toBe("telegram-token");
+
+      // Test discord
+      await adapter.configureChannel?.({
+        id: "discord",
+        config: {},
+        secrets: { botToken: "discord-token" },
+      });
+      call = mockExecWithArgs.mock.calls[1];
+      expect(call[2].env.DISCORD_BOT_TOKEN).toBe("discord-token");
+
+      // Test slack (multiple secrets)
+      await adapter.configureChannel?.({
+        id: "slack",
+        config: {},
+        secrets: {
+          botToken: "slack-bot-token",
+          signingSecret: "slack-secret",
+          appToken: "slack-app-token",
+        },
+      });
+      call = mockExecWithArgs.mock.calls[2];
+      expect(call[2].env.SLACK_BOT_TOKEN).toBe("slack-bot-token");
+      expect(call[2].env.SLACK_SIGNING_SECRET).toBe("slack-secret");
+      expect(call[2].env.SLACK_APP_TOKEN).toBe("slack-app-token");
+    });
+
+    it("never logs the token (security check)", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "Channel added successfully",
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      const secretToken = "super-secret-token-12345";
+      await adapter.configureChannel?.({
+        id: "telegram",
+        config: {},
+        secrets: { botToken: secretToken },
+      });
+
+      // Verify token is NOT in the command arguments (only in env)
+      const call = mockExecWithArgs.mock.calls[0];
+      const args = call[1];
+      expect(args.join(" ")).not.toContain(secretToken);
+    });
+  });
+
+  describe("verifyChannel()", () => {
+    it("runs channels status --probe and parses connected=true from real E2E output (running/configured)", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        // REAL output with valid token (per phase2a-channel-e2e.md)
+        stdout: "Checking channel status (probe)…\nGateway reachable.\n- Telegram default: enabled, configured, running, mode:polling",
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      const result = await adapter.verifyChannel?.("telegram");
+
+      expect(mockExecWithArgs).toHaveBeenCalledWith(
+        expect.stringContaining("openclaw"),
+        ["channels", "status", "--channel", "telegram", "--probe"],
+        expect.any(Object)
+      );
+
+      expect(result).toEqual({
+        connected: true,
+        detail: expect.any(String),
+      });
+    });
+
+    it("runs channels status --probe and parses connected=false from real E2E output (not configured/stopped)", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        // REAL output with dummy token (per phase2a-channel-e2e.md)
+        stdout: "Checking channel status (probe)…\nGateway reachable.\n- Telegram default: enabled, not configured, stopped, mode:polling",
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      const result = await adapter.verifyChannel?.("telegram");
+
+      expect(result).toEqual({
+        connected: false,
+        detail: expect.any(String),
+      });
+    });
+
+    it("returns connected=false on exec error (does not throw)", async () => {
+      const mockExecWithArgs = vi.fn().mockRejectedValue(new Error("Command failed"));
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      const result = await adapter.verifyChannel?.("telegram");
+
+      expect(result).toEqual({
+        connected: false,
+        detail: expect.stringContaining("Command failed"),
+      });
+    });
+
+    it("uses sandboxed env for probe command", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "connected",
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      await adapter.verifyChannel?.("telegram");
+
+      const call = mockExecWithArgs.mock.calls[0];
+      const opts = call[2];
+      expect(opts.env).toBeDefined();
+      expect(opts.env.PATH).not.toContain(".local/bin");
+    });
+  });
+
+  describe("removeChannel()", () => {
+    it("runs channels remove --delete and returns removed=true", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "Channel removed successfully",
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      const result = await adapter.removeChannel?.("telegram");
+
+      expect(mockExecWithArgs).toHaveBeenCalledWith(
+        expect.stringContaining("openclaw"),
+        ["channels", "remove", "--channel", "telegram", "--delete"],
+        expect.any(Object)
+      );
+
+      expect(result).toEqual({ removed: true });
+    });
+
+    it("validates channel id to prevent command injection", async () => {
+      adapter = new OpenclawAdapter(tempDir);
+
+      await expect(
+        adapter.removeChannel?.("telegram; rm -rf /")
+      ).rejects.toThrow(/Invalid/);
+    });
+
+    it("uses sandboxed env for remove command", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "removed",
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      await adapter.removeChannel?.("telegram");
+
+      const call = mockExecWithArgs.mock.calls[0];
+      const opts = call[2];
+      expect(opts.env).toBeDefined();
+      expect(opts.env.PATH).not.toContain(".local/bin");
+    });
+  });
+
+  describe("listChannels()", () => {
+    it("parses real E2E line format into array with id, enabled, connected", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        // REAL output format from phase2a-channel-e2e.md
+        stdout: `Chat channels:
+- Telegram default: installed, configured, enabled, token=***
+- Discord default: installed, not configured, enabled, token=***`,
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      const channels = await adapter.listChannels?.();
+
+      expect(mockExecWithArgs).toHaveBeenCalledWith(
+        expect.stringContaining("openclaw"),
+        ["channels", "list"],
+        expect.any(Object)
+      );
+
+      expect(channels).toHaveLength(2);
+      expect(channels?.[0]).toEqual({
+        id: "telegram",
+        enabled: true,
+        connected: true,
+      });
+      expect(channels?.[1]).toEqual({
+        id: "discord",
+        enabled: true,
+        connected: false,
+      });
+    });
+
+    it("returns empty array when no channels configured (real E2E empty state)", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        // REAL empty state format from phase2a-channel-e2e.md
+        stdout: "Chat channels:\n- no configured chat channels (run `openclaw channels list --all` to see installable channels)",
+        stderr: "",
+      });
+
+      adapter = new OpenclawAdapter(tempDir, undefined, mockExecWithArgs);
+
+      const channels = await adapter.listChannels?.();
+
+      expect(channels).toEqual([]);
+    });
+  });
+
+  describe("requiresRestartAfterChannelChange()", () => {
+    it("returns true (openclaw gateway restart required after channel changes)", () => {
+      adapter = new OpenclawAdapter(tempDir);
+
+      const requiresRestart = adapter.requiresRestartAfterChannelChange?.();
+
+      expect(requiresRestart).toBe(true);
+    });
+  });
 });
