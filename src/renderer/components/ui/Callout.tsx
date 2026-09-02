@@ -24,7 +24,7 @@ export function Callout({
   const iconClasses = {
     info: "text-indigo-600",
     success: "text-emerald-600",
-    warning: "text-amber-600",
+    warning: "text-amber-500",
     error: "text-rose-600",
   };
 
