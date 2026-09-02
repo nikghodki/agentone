@@ -216,6 +216,109 @@ describe("HermesAdapter", () => {
       // Verify the config is still valid YAML (no syntax errors from unescaped chars)
       expect(configContent).toContain('provider: "custom"');
     });
+
+    it("writes persona to SOUL.md (not workspace/SOUL.md) when provided", async () => {
+      adapter = new HermesAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      await adapter.configure(backend, { persona: "You are a security researcher." });
+
+      // Verify SOUL.md was written to configDir root (NOT workspace/)
+      const personaPath = path.join(tempDir, "SOUL.md");
+      const personaContent = await fs.readFile(personaPath, "utf-8");
+      expect(personaContent).toBe("You are a security researcher.");
+
+      // Verify config.yaml was still written correctly
+      const configContent = await fs.readFile(configPath, "utf-8");
+      expect(configContent).toContain('default: "llama3.2:3b"');
+    });
+
+    it("does not write SOUL.md when persona is empty or whitespace", async () => {
+      adapter = new HermesAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      await adapter.configure(backend, { persona: "  " });
+
+      // Verify SOUL.md was NOT created
+      const personaPath = path.join(tempDir, "SOUL.md");
+      await expect(fs.access(personaPath)).rejects.toThrow();
+    });
+
+    it("does NOT add gateway/port key to config.yaml (intentional no-op)", async () => {
+      adapter = new HermesAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      // Configure with gatewayPort
+      await adapter.configure(backend, { gatewayPort: 8090 });
+
+      const configContent = await fs.readFile(configPath, "utf-8");
+
+      // Verify gateway/port was NOT added (hermes has no verified bind-port key)
+      expect(configContent).not.toContain("gateway");
+      expect(configContent).not.toContain("port");
+      expect(configContent).not.toContain("8090");
+
+      // Verify config is byte-identical to no-options case for port dimension
+      const adapter2 = new HermesAdapter(path.join(tempDir, "alt"));
+      await adapter2.configure(backend);
+      const altConfigContent = await fs.readFile(path.join(tempDir, "alt", "config.yaml"), "utf-8");
+      expect(configContent).toBe(altConfigContent);
+    });
+
+    it("applies persona even when gatewayPort is also provided", async () => {
+      adapter = new HermesAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      // Provide both persona and gatewayPort
+      await adapter.configure(backend, { persona: "You are a DevOps expert.", gatewayPort: 8090 });
+
+      // Verify persona was written
+      const personaPath = path.join(tempDir, "SOUL.md");
+      const personaContent = await fs.readFile(personaPath, "utf-8");
+      expect(personaContent).toBe("You are a DevOps expert.");
+
+      // Verify config.yaml still does NOT contain port
+      const configContent = await fs.readFile(configPath, "utf-8");
+      expect(configContent).not.toContain("gateway");
+      expect(configContent).not.toContain("port");
+      expect(configContent).not.toContain("8090");
+    });
   });
 
   describe("install()", () => {
