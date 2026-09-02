@@ -197,4 +197,194 @@ describe("ChannelSetupForm", () => {
     // Should show no channels callout
     expect(screen.getByText(/No channels available for this framework yet/i)).toBeTruthy();
   });
+
+  // Task 4: credential channel with optional fields
+  it("credential channel (slack) renders all fields including optional signingSecret with hint", async () => {
+    const { ChannelSetupForm } = await import("../../src/renderer/components/ChannelSetupForm");
+
+    render(
+      <ChannelSetupForm
+        deploymentId="dep1"
+        frameworkId="hermes"
+      />
+    );
+
+    // Pick slack
+    const slackCard = screen.getByText("Slack").closest("[role='radio']");
+    fireEvent.click(slackCard!);
+
+    // Should show all three fields
+    expect(screen.getByLabelText("Bot Token")).toBeTruthy();
+    expect(screen.getByLabelText("App Token")).toBeTruthy();
+    expect(screen.getByLabelText("Signing Secret (optional)")).toBeTruthy();
+
+    // Optional field should have "(optional)" hint in label
+    const signingSecretInput = screen.getByLabelText("Signing Secret (optional)");
+    expect(signingSecretInput).toBeTruthy();
+  });
+
+  it("credential channel (slack): Connect enabled with only required fields filled, signingSecret blank", async () => {
+    const { ChannelSetupForm } = await import("../../src/renderer/components/ChannelSetupForm");
+
+    mockConfigureChannel.mockResolvedValue({ connected: true });
+
+    const { container } = render(
+      <ChannelSetupForm
+        deploymentId="dep1"
+        frameworkId="hermes"
+      />
+    );
+
+    // Pick slack
+    const slackCard = screen.getByText("Slack").closest("[role='radio']");
+    fireEvent.click(slackCard!);
+
+    // Fill only required fields (botToken + appToken)
+    const botTokenInput = screen.getByLabelText("Bot Token");
+    const appTokenInput = screen.getByLabelText("App Token");
+    fireEvent.change(botTokenInput, { target: { value: "xoxb-test" } });
+    fireEvent.change(appTokenInput, { target: { value: "xapp-test" } });
+
+    // Leave signingSecret blank - Connect should still be enabled
+    const connectButton = screen.getByRole("button", { name: /Connect/i }) as HTMLButtonElement;
+    expect(connectButton.disabled).toBe(false);
+
+    // Click Connect - should call with botToken + appToken only
+    fireEvent.click(connectButton);
+
+    await waitFor(() => {
+      expect(mockConfigureChannel).toHaveBeenCalledWith("dep1", {
+        id: "slack",
+        config: {},
+        secrets: { botToken: "xoxb-test", appToken: "xapp-test" },
+      });
+    }, { container });
+  });
+
+  it("qr channel (whatsapp_web) renders guided instructions and no secret inputs", async () => {
+    const { ChannelSetupForm } = await import("../../src/renderer/components/ChannelSetupForm");
+
+    render(
+      <ChannelSetupForm
+        deploymentId="dep1"
+        frameworkId="openclaw"
+      />
+    );
+
+    // Pick whatsapp_web
+    const whatsappCard = screen.getByText("WhatsApp Web").closest("[role='radio']");
+    fireEvent.click(whatsappCard!);
+
+    // Should NOT show any labeled inputs (no Bot Token, App Token, etc.)
+    expect(screen.queryByLabelText("Bot Token")).toBeFalsy();
+    expect(screen.queryByLabelText("App Token")).toBeFalsy();
+
+    // Should show "Start pairing" button
+    expect(screen.getByRole("button", { name: /Start pairing/i })).toBeTruthy();
+  });
+
+  it("qr channel (whatsapp_web): Start pairing calls configureChannel with empty secrets", async () => {
+    const { ChannelSetupForm } = await import("../../src/renderer/components/ChannelSetupForm");
+
+    mockConfigureChannel.mockResolvedValue({ connected: false, detail: "Waiting for QR scan" });
+
+    const { container } = render(
+      <ChannelSetupForm
+        deploymentId="dep1"
+        frameworkId="openclaw"
+      />
+    );
+
+    // Pick whatsapp_web
+    const whatsappCard = screen.getByText("WhatsApp Web").closest("[role='radio']");
+    fireEvent.click(whatsappCard!);
+
+    // Click "Start pairing"
+    const startButton = screen.getByRole("button", { name: /Start pairing/i });
+    fireEvent.click(startButton);
+
+    // Should call configureChannel with empty config and secrets
+    await waitFor(() => {
+      expect(mockConfigureChannel).toHaveBeenCalledWith("dep1", {
+        id: "whatsapp_web",
+        config: {},
+        secrets: {},
+      });
+    }, { container });
+
+    // Should show the pairing guidance detail message
+    await waitFor(() => {
+      expect(screen.getByText(/Scan the QR code in your framework to complete pairing/i)).toBeTruthy();
+    }, { container });
+  });
+
+  it("qr channel (whatsapp_web): Check status button appears and calls verify", async () => {
+    const { ChannelSetupForm } = await import("../../src/renderer/components/ChannelSetupForm");
+
+    mockConfigureChannel.mockResolvedValue({ connected: false, detail: "Waiting for QR scan" });
+
+    const { container } = render(
+      <ChannelSetupForm
+        deploymentId="dep1"
+        frameworkId="openclaw"
+      />
+    );
+
+    // Pick whatsapp_web and start pairing
+    const whatsappCard = screen.getByText("WhatsApp Web").closest("[role='radio']");
+    fireEvent.click(whatsappCard!);
+    const startButton = screen.getByRole("button", { name: /Start pairing/i });
+    fireEvent.click(startButton);
+
+    await waitFor(() => {
+      expect(mockConfigureChannel).toHaveBeenCalled();
+    }, { container });
+
+    // Should show "Check status" button after pairing started
+    await waitFor(() => {
+      const checkButton = screen.getByRole("button", { name: /Check status/i });
+      expect(checkButton).toBeTruthy();
+    }, { container });
+  });
+
+  it("no regression: telegram credential flow still works", async () => {
+    const { ChannelSetupForm } = await import("../../src/renderer/components/ChannelSetupForm");
+
+    mockConfigureChannel.mockResolvedValue({ connected: true });
+
+    const { container } = render(
+      <ChannelSetupForm
+        deploymentId="dep1"
+        frameworkId="openclaw"
+      />
+    );
+
+    // Pick telegram
+    const telegramCard = screen.getByText("Telegram").closest("[role='radio']");
+    fireEvent.click(telegramCard!);
+
+    // Fill botToken
+    const botTokenInput = screen.getByLabelText("Bot Token");
+    fireEvent.change(botTokenInput, { target: { value: "tg-token-123" } });
+
+    // Connect should be enabled
+    const connectButton = screen.getByRole("button", { name: /Connect/i }) as HTMLButtonElement;
+    expect(connectButton.disabled).toBe(false);
+
+    // Click Connect
+    fireEvent.click(connectButton);
+
+    await waitFor(() => {
+      expect(mockConfigureChannel).toHaveBeenCalledWith("dep1", {
+        id: "telegram",
+        config: {},
+        secrets: { botToken: "tg-token-123" },
+      });
+    }, { container });
+
+    // Should show success
+    await waitFor(() => {
+      expect(screen.getByText(/Connected successfully/i)).toBeTruthy();
+    }, { container });
+  });
 });

@@ -12,7 +12,7 @@ export interface ChannelSetupFormProps {
   onConnected?: (id: string) => void;
 }
 
-type ConnectState = "idle" | "connecting" | "success" | "error";
+type ConnectState = "idle" | "connecting" | "verifying" | "success" | "error";
 
 export function ChannelSetupForm({
   deploymentId,
@@ -49,18 +49,25 @@ export function ChannelSetupForm({
     setConnectState("connecting");
     setConnectDetail("");
 
-    // Separate config (non-secret) and secrets (secret fields)
-    const config: Record<string, string> = {};
-    const secrets: Record<string, string> = {};
+    // For QR channels, config and secrets are empty
+    let config: Record<string, string> = {};
+    let secrets: Record<string, string> = {};
 
-    selectedChannel.fields.forEach((field) => {
-      const value = fieldValues[field.key] || "";
-      if (field.secret) {
-        secrets[field.key] = value;
-      } else {
-        config[field.key] = value;
-      }
-    });
+    if (selectedChannel.kind === "credential") {
+      // Separate config (non-secret) and secrets (secret fields)
+      selectedChannel.fields.forEach((field) => {
+        const value = fieldValues[field.key] || "";
+        // Only include non-empty values or required fields
+        if (value) {
+          if (field.secret) {
+            secrets[field.key] = value;
+          } else {
+            config[field.key] = value;
+          }
+        }
+      });
+    }
+    // For QR channels, config and secrets remain empty
 
     try {
       // Staged progress
@@ -88,6 +95,57 @@ export function ChannelSetupForm({
     } catch (err) {
       setConnectState("error");
       setConnectDetail(err instanceof Error ? err.message : "Unknown error occurred");
+    }
+  };
+
+  const handleStartPairing = async () => {
+    if (!selectedChannel) return;
+
+    setConnectState("connecting");
+    setConnectDetail("");
+
+    try {
+      setProgressLabel("Starting pairing...");
+      await window.electronAPI.configureChannel(deploymentId, {
+        id: selectedChannel.id,
+        config: {},
+        secrets: {},
+      });
+
+      // Move to verifying state after starting pairing
+      setConnectState("verifying");
+      setConnectDetail("Scan the QR code in your framework to complete pairing.");
+    } catch (err) {
+      setConnectState("error");
+      setConnectDetail(err instanceof Error ? err.message : "Failed to start pairing");
+    }
+  };
+
+  const handleCheckStatus = async () => {
+    if (!selectedChannel) return;
+
+    setConnectState("connecting");
+    setConnectDetail("");
+
+    try {
+      setProgressLabel("Checking status...");
+      const result = await window.electronAPI.configureChannel(deploymentId, {
+        id: selectedChannel.id,
+        config: {},
+        secrets: {},
+      });
+
+      if (result.connected) {
+        setConnectState("success");
+        setConnectDetail("Connected successfully!");
+        onConnected?.(selectedChannel.id);
+      } else {
+        setConnectState("verifying");
+        setConnectDetail(result.detail || "Still waiting for QR scan...");
+      }
+    } catch (err) {
+      setConnectState("verifying");
+      setConnectDetail(err instanceof Error ? err.message : "Status check failed");
     }
   };
 
@@ -129,18 +187,29 @@ export function ChannelSetupForm({
             {selectedChannel.instructions}
           </Callout>
 
-          {/* Field inputs */}
-          {selectedChannel.fields.map((field) => (
-            <Input
-              key={field.key}
-              label={field.label}
-              type={field.secret ? "password" : "text"}
-              placeholder={field.placeholder}
-              helper={field.help}
-              value={fieldValues[field.key] || ""}
-              onChange={(e) => handleFieldChange(field.key, e.target.value)}
-            />
-          ))}
+          {/* Credential channel: show field inputs */}
+          {selectedChannel.kind === "credential" && (
+            <>
+              {selectedChannel.fields.map((field) => (
+                <Input
+                  key={field.key}
+                  label={field.optional ? `${field.label} (optional)` : field.label}
+                  type={field.secret ? "password" : "text"}
+                  placeholder={field.placeholder}
+                  helper={field.help}
+                  value={fieldValues[field.key] || ""}
+                  onChange={(e) => handleFieldChange(field.key, e.target.value)}
+                />
+              ))}
+            </>
+          )}
+
+          {/* QR channel: no field inputs, show pairing guidance */}
+          {selectedChannel.kind === "qr" && connectState === "verifying" && (
+            <Callout tone="info">
+              {connectDetail}
+            </Callout>
+          )}
 
           {/* Connect button and progress */}
           {connectState === "connecting" && (
@@ -151,15 +220,39 @@ export function ChannelSetupForm({
             />
           )}
 
-          {connectState === "idle" && (
+          {/* Credential channel: Connect button */}
+          {selectedChannel.kind === "credential" && connectState === "idle" && (
             <Button
               variant="primary"
               onClick={handleConnect}
               disabled={
-                selectedChannel.fields.some((f) => !fieldValues[f.key])
+                // Only require non-optional fields to be filled
+                selectedChannel.fields
+                  .filter((f) => !f.optional)
+                  .some((f) => !fieldValues[f.key])
               }
             >
               Connect
+            </Button>
+          )}
+
+          {/* QR channel: Start pairing button */}
+          {selectedChannel.kind === "qr" && connectState === "idle" && (
+            <Button
+              variant="primary"
+              onClick={handleStartPairing}
+            >
+              Start pairing
+            </Button>
+          )}
+
+          {/* QR channel: Check status button (after pairing started) */}
+          {selectedChannel.kind === "qr" && connectState === "verifying" && (
+            <Button
+              variant="primary"
+              onClick={handleCheckStatus}
+            >
+              Check status
             </Button>
           )}
 
