@@ -160,6 +160,192 @@ describe("ZeptoclawAdapter", () => {
       // secretRef is just a reference, should not be in config either
       expect(configContent).not.toContain("anthropic-api-key");
     });
+
+    it("writes persona to workspace/SOUL.md when provided", async () => {
+      adapter = new ZeptoclawAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      await adapter.configure(backend, { persona: "You are a helpful ops bot." });
+
+      // Verify SOUL.md was written to workspace/
+      const personaPath = path.join(tempDir, "workspace", "SOUL.md");
+      const personaContent = await fs.readFile(personaPath, "utf-8");
+      expect(personaContent).toBe("You are a helpful ops bot.");
+
+      // Verify config.json was still written correctly
+      const configContent = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+      expect(config.agents.defaults.model).toBe("llama3.2:3b");
+    });
+
+    it("does not write SOUL.md when persona is whitespace-only", async () => {
+      adapter = new ZeptoclawAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      await adapter.configure(backend, { persona: "  " });
+
+      // Verify SOUL.md was NOT created
+      const personaPath = path.join(tempDir, "workspace", "SOUL.md");
+      await expect(fs.access(personaPath)).rejects.toThrow();
+    });
+
+    it("does not write SOUL.md when persona is absent", async () => {
+      adapter = new ZeptoclawAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      await adapter.configure(backend, {});
+
+      // Verify SOUL.md was NOT created
+      const personaPath = path.join(tempDir, "workspace", "SOUL.md");
+      await expect(fs.access(personaPath)).rejects.toThrow();
+    });
+
+    it("does not write SOUL.md when options are omitted", async () => {
+      adapter = new ZeptoclawAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      await adapter.configure(backend);
+
+      // Verify SOUL.md was NOT created
+      const personaPath = path.join(tempDir, "workspace", "SOUL.md");
+      await expect(fs.access(personaPath)).rejects.toThrow();
+    });
+
+    it("deep-merges gateway.port into config.json preserving existing keys", async () => {
+      adapter = new ZeptoclawAdapter(tempDir);
+
+      // Write existing config with providers and agents
+      const existingConfig = {
+        agents: { defaults: { model: "llama3.2:3b" } },
+        providers: { ollama: { api_base: "http://localhost:11434/v1", model: "llama3.2:3b" } }
+      };
+      await fs.writeFile(configPath, JSON.stringify(existingConfig, null, 2), "utf-8");
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      await adapter.configure(backend, { gatewayPort: 8090 });
+
+      const configContent = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+
+      // Verify gateway.port was added
+      expect(config.gateway).toBeDefined();
+      expect(config.gateway.port).toBe(8090);
+
+      // Verify existing keys were preserved
+      expect(config.agents.defaults.model).toBe("llama3.2:3b");
+      expect(config.providers.ollama.api_base).toBe("http://localhost:11434/v1");
+    });
+
+    it("ignores out-of-range gateway ports (too large)", async () => {
+      adapter = new ZeptoclawAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      await adapter.configure(backend, { gatewayPort: 70000 });
+
+      const configContent = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+
+      // Verify gateway was NOT added (port out of range)
+      expect(config.gateway).toBeUndefined();
+    });
+
+    it("ignores invalid gateway ports (zero)", async () => {
+      adapter = new ZeptoclawAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      await adapter.configure(backend, { gatewayPort: 0 });
+
+      const configContent = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+
+      // Verify gateway was NOT added (port invalid)
+      expect(config.gateway).toBeUndefined();
+    });
+
+    it("ignores invalid gateway ports (NaN)", async () => {
+      adapter = new ZeptoclawAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      await adapter.configure(backend, { gatewayPort: NaN as any });
+
+      const configContent = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+
+      // Verify gateway was NOT added (port invalid)
+      expect(config.gateway).toBeUndefined();
+    });
   });
 
   describe("install()", () => {
