@@ -250,10 +250,11 @@ describe("ZeptoclawAdapter", () => {
     it("deep-merges gateway.port into config.json preserving existing keys", async () => {
       adapter = new ZeptoclawAdapter(tempDir);
 
-      // Write existing config with providers and agents
+      // Write existing config with DIFFERENT model + a sibling top-level key
       const existingConfig = {
-        agents: { defaults: { model: "llama3.2:3b" } },
-        providers: { ollama: { api_base: "http://localhost:11434/v1", model: "llama3.2:3b" } }
+        agents: { defaults: { model: "mistral:latest" } },
+        providers: { ollama: { api_base: "http://localhost:11434/v1", model: "mistral:latest" } },
+        channels: { telegram: { enabled: true, token: "existing-token" } }
       };
       await fs.writeFile(configPath, JSON.stringify(existingConfig, null, 2), "utf-8");
 
@@ -276,9 +277,13 @@ describe("ZeptoclawAdapter", () => {
       expect(config.gateway).toBeDefined();
       expect(config.gateway.port).toBe(8090);
 
-      // Verify existing keys were preserved
+      // Verify model config was updated (not tautological)
       expect(config.agents.defaults.model).toBe("llama3.2:3b");
-      expect(config.providers.ollama.api_base).toBe("http://localhost:11434/v1");
+
+      // Verify sibling top-level key was preserved (proves deep-merge, not overwrite)
+      expect(config.channels).toBeDefined();
+      expect(config.channels.telegram.enabled).toBe(true);
+      expect(config.channels.telegram.token).toBe("existing-token");
     });
 
     it("ignores out-of-range gateway ports (too large)", async () => {
@@ -345,6 +350,106 @@ describe("ZeptoclawAdapter", () => {
 
       // Verify gateway was NOT added (port invalid)
       expect(config.gateway).toBeUndefined();
+    });
+
+    it("accepts gateway port boundary values (1 and 65535)", async () => {
+      adapter = new ZeptoclawAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      // Test port 1 (minimum valid)
+      await adapter.configure(backend, { gatewayPort: 1 });
+      let config = JSON.parse(await fs.readFile(configPath, "utf-8"));
+      expect(config.gateway.port).toBe(1);
+
+      // Test port 65535 (maximum valid)
+      await adapter.configure(backend, { gatewayPort: 65535 });
+      config = JSON.parse(await fs.readFile(configPath, "utf-8"));
+      expect(config.gateway.port).toBe(65535);
+    });
+
+    it("ignores gateway ports outside valid range", async () => {
+      adapter = new ZeptoclawAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      // Test port 65536 (too large)
+      await adapter.configure(backend, { gatewayPort: 65536 });
+      let config = JSON.parse(await fs.readFile(configPath, "utf-8"));
+      expect(config.gateway).toBeUndefined();
+
+      // Test port -1 (negative)
+      await adapter.configure(backend, { gatewayPort: -1 });
+      config = JSON.parse(await fs.readFile(configPath, "utf-8"));
+      expect(config.gateway).toBeUndefined();
+    });
+
+    it("truncates fractional gateway ports to integers", async () => {
+      adapter = new ZeptoclawAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      await adapter.configure(backend, { gatewayPort: 80.5 });
+
+      const configContent = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+
+      // Verify port was truncated to 80
+      expect(config.gateway.port).toBe(80);
+    });
+
+    it("applies both persona and gateway port when both provided", async () => {
+      adapter = new ZeptoclawAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      await adapter.configure(backend, { persona: "You are a DevOps expert.", gatewayPort: 8090 });
+
+      // Verify SOUL.md was written
+      const personaPath = path.join(tempDir, "workspace", "SOUL.md");
+      const personaContent = await fs.readFile(personaPath, "utf-8");
+      expect(personaContent).toBe("You are a DevOps expert.");
+
+      // Verify gateway.port was written
+      const configContent = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+      expect(config.gateway.port).toBe(8090);
+
+      // Verify model config is intact
+      expect(config.agents.defaults.model).toBe("llama3.2:3b");
+      expect(config.providers.ollama.model).toBe("llama3.2:3b");
     });
   });
 

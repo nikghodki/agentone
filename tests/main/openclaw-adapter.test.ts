@@ -359,6 +359,106 @@ describe("OpenclawAdapter", () => {
       // Verify gateway was NOT added (port invalid)
       expect(config.gateway).toBeUndefined();
     });
+
+    it("accepts gateway port boundary values (1 and 65535)", async () => {
+      adapter = new OpenclawAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      // Test port 1 (minimum valid)
+      await adapter.configure(backend, { gatewayPort: 1 });
+      let config = JSON.parse(await fs.readFile(configPath, "utf-8"));
+      expect(config.gateway.port).toBe(1);
+
+      // Test port 65535 (maximum valid)
+      await adapter.configure(backend, { gatewayPort: 65535 });
+      config = JSON.parse(await fs.readFile(configPath, "utf-8"));
+      expect(config.gateway.port).toBe(65535);
+    });
+
+    it("ignores gateway ports outside valid range", async () => {
+      adapter = new OpenclawAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      // Test port 65536 (too large)
+      await adapter.configure(backend, { gatewayPort: 65536 });
+      let config = JSON.parse(await fs.readFile(configPath, "utf-8"));
+      expect(config.gateway).toBeUndefined();
+
+      // Test port -1 (negative)
+      await adapter.configure(backend, { gatewayPort: -1 });
+      config = JSON.parse(await fs.readFile(configPath, "utf-8"));
+      expect(config.gateway).toBeUndefined();
+    });
+
+    it("truncates fractional gateway ports to integers", async () => {
+      adapter = new OpenclawAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      await adapter.configure(backend, { gatewayPort: 80.5 });
+
+      const configContent = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+
+      // Verify port was truncated to 80
+      expect(config.gateway.port).toBe(80);
+    });
+
+    it("applies both persona and gateway port when both provided", async () => {
+      adapter = new OpenclawAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      await adapter.configure(backend, { persona: "You are a code reviewer.", gatewayPort: 18800 });
+
+      // Verify SOUL.md was written
+      const personaPath = path.join(tempDir, "workspace", "SOUL.md");
+      const personaContent = await fs.readFile(personaPath, "utf-8");
+      expect(personaContent).toBe("You are a code reviewer.");
+
+      // Verify gateway.port was written
+      const configContent = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+      expect(config.gateway.port).toBe(18800);
+
+      // Verify model config is intact
+      expect(config.agents.defaults.model.primary).toBe("ollama/llama3.2:3b");
+      expect(config.models.providers.ollama.models[0].id).toBe("llama3.2:3b");
+    });
   });
 
   describe("install()", () => {

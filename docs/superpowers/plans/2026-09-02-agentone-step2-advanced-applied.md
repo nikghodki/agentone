@@ -25,7 +25,7 @@
 - Modify: `src/shared/v2-types.ts` (extend `configure` signature + add `FrameworkDeployOptions` type).
 - Modify: `src/main/frameworks/zeptoclaw-adapter.ts`, `hermes-adapter.ts`, `openclaw-adapter.ts` (apply persona + port in/after `configure`).
 - Modify: `src/main/ipc-handlers.ts` (`deploy-framework` accepts + forwards `options`).
-- Modify: `src/main/preload.ts` + `src/renderer/electron.d.ts` (deployFramework 3rd arg).
+- Modify: `src/preload/index.ts` (deployFramework 3rd arg) + `src/shared/types.ts:120` (ElectronAPI `deployFramework` type gets optional 3rd arg). NOTE: a 2nd caller `src/renderer/pages/ModelBackendPage.tsx:73` passes only 2 args — the optional 3rd arg keeps it working unchanged; do NOT modify it.
 - Modify: `src/renderer/pages/wizard/DeployStep.tsx` (pass mapped options).
 - Tests: `tests/main/*-adapter*.test.ts` (per adapter), `tests/main/ipc-*deploy*.test.ts` (or existing deploy handler test), `tests/renderer/*deploy-step*.test.tsx`.
 
