@@ -77,7 +77,7 @@ describe("ModelLocalStep", () => {
     });
   });
 
-  it("custom endpoint reveals URL, key, and protocol inputs and sets kind to custom", async () => {
+  it("custom endpoint reveals URL, model, key, and protocol inputs and sets kind to custom", async () => {
     const { ModelLocalStep } = await import("../../src/renderer/pages/wizard/ModelLocalStep");
 
     useAppStore.setState({ wizardStep: "model-local" });
@@ -87,9 +87,11 @@ describe("ModelLocalStep", () => {
     // Click on custom endpoint option
     fireEvent.click(screen.getByText(/Custom endpoint/i));
 
-    // Should reveal input fields
+    // Should reveal input fields including model field
     await waitFor(() => {
       expect(screen.getByLabelText(/base url/i)).toBeTruthy();
+      const modelInputs = screen.getAllByLabelText(/model/i);
+      expect(modelInputs.length).toBeGreaterThan(0);
       expect(screen.getByLabelText(/api key/i)).toBeTruthy();
       expect(screen.getByLabelText(/protocol/i)).toBeTruthy();
     });
@@ -97,6 +99,10 @@ describe("ModelLocalStep", () => {
     // Fill in the fields
     const urlInput = screen.getByLabelText(/base url/i) as HTMLInputElement;
     fireEvent.change(urlInput, { target: { value: "http://localhost:11434" } });
+
+    const modelInputs = screen.getAllByLabelText(/model/i);
+    const modelInput = modelInputs[0] as HTMLInputElement;
+    fireEvent.change(modelInput, { target: { value: "llama3.2:3b" } });
 
     const keyInput = screen.getByLabelText(/api key/i) as HTMLInputElement;
     fireEvent.change(keyInput, { target: { value: "test-key-123" } });
@@ -109,6 +115,7 @@ describe("ModelLocalStep", () => {
       const draft = useAppStore.getState().modelBackendDraft;
       expect(draft.kind).toBe("custom");
       expect(draft.baseUrl).toBe("http://localhost:11434");
+      expect(draft.model).toBe("llama3.2:3b");
       expect(draft.protocol).toBe("v1/messages");
 
       // API key must be persisted to cloudForm.apiKey (survives to deploy)

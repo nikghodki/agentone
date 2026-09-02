@@ -49,12 +49,12 @@ describe("TaskPage Switch Framework", () => {
     // Wait a tick for modal to render
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    // Find the modal confirmation button (looks for the red button with "Switch framework")
+    // Find the modal confirmation button (looks for the danger/rose button with "Switch framework")
     const allButtons = container.querySelectorAll("button");
     const modalConfirmButton = Array.from(allButtons).find(
       (btn) =>
         btn.textContent?.trim() === "Switch framework" &&
-        btn.className.includes("bg-red-600")
+        btn.className.includes("bg-rose-600")
     );
     expect(modalConfirmButton).toBeTruthy();
 

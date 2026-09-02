@@ -189,6 +189,23 @@ export function ModelLocalStep() {
           />
 
           <Input
+            label="Model"
+            value={modelBackendDraft.model}
+            onChange={(e) => {
+              const model = e.target.value;
+              setModelBackendDraft({
+                kind: "custom",
+                provider: null,
+                baseUrl: customBaseUrl || null,
+                protocol: customProtocol as "v1/chat/completions" | "v1/messages",
+                model,
+              });
+            }}
+            placeholder="llama3.2:3b"
+            helper="The model identifier to use with this endpoint"
+          />
+
+          <Input
             label="API Key"
             type="password"
             value={customApiKey}

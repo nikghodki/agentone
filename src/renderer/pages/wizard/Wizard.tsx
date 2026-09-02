@@ -137,10 +137,9 @@ export function Wizard() {
   return (
     <WizardLayout
       current={stepProgressKey}
-      title={`Step: ${wizardStep}`}
       canContinue={canContinue}
       onBack={canGoBack ? handleBack : undefined}
-      onContinue={handleContinue}
+      onContinue={wizardStep === "deploy" ? undefined : handleContinue}
     >
       {renderStep()}
     </WizardLayout>

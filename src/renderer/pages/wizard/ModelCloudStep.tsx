@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { useAppStore } from "../../store";
 import { Select } from "../../components/ui/Select";
 import { Input } from "../../components/ui/Input";
@@ -30,6 +30,13 @@ export function ModelCloudStep() {
   const patchWizard = useAppStore((s) => s.patchWizard);
 
   const currentProvider = modelBackendDraft.provider || "anthropic";
+
+  // On mount, if kind is cloud but provider is not set, commit the default provider
+  useEffect(() => {
+    if (modelBackendDraft.kind === "cloud" && !modelBackendDraft.provider) {
+      handleProviderChange("anthropic");
+    }
+  }, []);
 
   const handleProviderChange = (provider: string) => {
     // Mirror the logic from ModelBackendPage.handleProviderChange

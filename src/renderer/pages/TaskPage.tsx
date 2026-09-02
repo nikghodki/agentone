@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useAppStore } from "../store";
+import { Button } from "../components/ui/Button";
 
 export function TaskPage() {
   const [input, setInput] = useState("");
@@ -96,44 +97,48 @@ export function TaskPage() {
       <div className="flex items-center justify-between p-4 border-b border-zinc-800">
         <h1 className="text-xl font-semibold text-white">Task Runner</h1>
         <div className="flex gap-2">
-          <button
+          <Button
+            variant="ghost"
             onClick={() => setShowSwitchConfirm(true)}
             disabled={!currentDeploymentId}
-            className="px-4 py-2 text-sm bg-transparent hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="text-sm"
           >
             Switch framework
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="secondary"
             onClick={() => useAppStore.getState().setView("dashboard")}
-            className="px-4 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
+            className="text-sm"
           >
             Back to Dashboard
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Switch Framework Confirmation Modal */}
       {showSwitchConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-zinc-900 rounded-lg p-6 max-w-md border border-zinc-800">
-            <h2 className="text-lg font-semibold text-white mb-3">Switch framework?</h2>
-            <p className="text-zinc-400 mb-6">
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md border border-slate-200">
+            <h2 className="text-lg font-semibold text-slate-900 mb-3">Switch framework?</h2>
+            <p className="text-slate-600 mb-6">
               This will tear down the current deployment and restart the setup wizard.
               Any unsaved work will be lost.
             </p>
             <div className="flex gap-3 justify-end">
-              <button
+              <Button
+                variant="secondary"
                 onClick={() => setShowSwitchConfirm(false)}
-                className="px-4 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
+                className="text-sm"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="danger"
                 onClick={handleSwitchFramework}
-                className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                className="text-sm"
               >
                 Switch framework
-              </button>
+              </Button>
             </div>
           </div>
         </div>

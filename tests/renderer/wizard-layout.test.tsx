@@ -12,12 +12,11 @@ describe("WizardLayout", () => {
     { key: "deploy", label: "Deploy" },
   ];
 
-  it("renders title and children", () => {
+  it("renders children", () => {
     const { container } = render(
       <WizardLayout
         steps={steps}
         current="framework"
-        title="Choose Framework"
         canContinue={false}
         onContinue={vi.fn()}
       >
@@ -25,7 +24,6 @@ describe("WizardLayout", () => {
       </WizardLayout>
     );
 
-    expect(within(container).getByText("Choose Framework")).toBeTruthy();
     expect(within(container).getByText("Step content")).toBeTruthy();
   });
 

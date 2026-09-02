@@ -6,10 +6,10 @@ import { Button } from "./ui/Button";
 export interface WizardLayoutProps {
   steps?: Step[];
   current: string;
-  title: string;
+  title?: string;
   canContinue: boolean;
   onBack?: () => void;
-  onContinue: () => void;
+  onContinue?: () => void;
   continueLabel?: string;
   children: React.ReactNode;
 }
@@ -41,7 +41,6 @@ export function WizardLayout({
 
         {/* Content Card */}
         <Card className="mb-6">
-          <h2 className="text-2xl font-semibold text-slate-900 mb-6">{title}</h2>
           {children}
         </Card>
 
@@ -54,13 +53,15 @@ export function WizardLayout({
               </Button>
             )}
           </div>
-          <Button
-            variant="primary"
-            onClick={onContinue}
-            disabled={!canContinue}
-          >
-            {continueLabel}
-          </Button>
+          {onContinue && (
+            <Button
+              variant="primary"
+              onClick={onContinue}
+              disabled={!canContinue}
+            >
+              {continueLabel}
+            </Button>
+          )}
         </div>
       </div>
     </div>

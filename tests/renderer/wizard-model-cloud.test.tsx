@@ -31,6 +31,32 @@ beforeEach(() => {
 });
 
 describe("ModelCloudStep", () => {
+  it("on mount with kind cloud and no provider, commits default provider (anthropic)", async () => {
+    const { ModelCloudStep } = await import("../../src/renderer/pages/wizard/ModelCloudStep");
+
+    // Set up state with kind=cloud but no provider (simulating fresh entry)
+    useAppStore.setState({
+      wizardStep: "model-cloud",
+      modelBackendDraft: {
+        kind: "cloud",
+        provider: null,
+        baseUrl: null,
+        protocol: "v1/chat/completions",
+        model: "",
+        extra: null,
+      },
+    });
+
+    render(<ModelCloudStep />);
+
+    // After mount, provider should be set to anthropic with correct protocol
+    await waitFor(() => {
+      const draft = useAppStore.getState().modelBackendDraft;
+      expect(draft.provider).toBe("anthropic");
+      expect(draft.protocol).toBe("v1/messages");
+    });
+  });
+
   it("renders provider select with 5 options", async () => {
     const { ModelCloudStep } = await import("../../src/renderer/pages/wizard/ModelCloudStep");
 
