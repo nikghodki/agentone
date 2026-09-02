@@ -6,7 +6,7 @@ import { Button } from "../../components/ui/Button";
 export function ChannelStep() {
   const currentDeploymentId = useAppStore((s) => s.currentDeploymentId);
   const selectedFrameworkId = useAppStore((s) => s.selectedFrameworkId);
-  const setView = useAppStore((s) => s.setView);
+  const setWizardStep = useAppStore((s) => s.setWizardStep);
 
   const [hasConnected, setHasConnected] = useState(false);
 
@@ -15,11 +15,11 @@ export function ChannelStep() {
   };
 
   const handleSkip = () => {
-    setView("task");
+    setWizardStep("use-case");
   };
 
   const handleContinue = () => {
-    setView("task");
+    setWizardStep("use-case");
   };
 
   if (!currentDeploymentId) {

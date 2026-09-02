@@ -10,6 +10,7 @@ import { ModelBackendPage } from "./pages/ModelBackendPage";
 import { TaskPage } from "./pages/TaskPage";
 import { CapabilitiesPage } from "./pages/CapabilitiesPage";
 import { ChannelsPage } from "./pages/ChannelsPage";
+import { UseCasesPage } from "./pages/UseCasesPage";
 import { Wizard } from "./pages/wizard/Wizard";
 
 function Placeholder({ name }: { name: string }) {
@@ -49,6 +50,8 @@ export function App() {
       return <CapabilitiesPage />;
     case "channels":
       return <ChannelsPage />;
+    case "use-cases":
+      return <UseCasesPage />;
     default:
       return <Placeholder name="Unknown View" />;
   }
