@@ -214,6 +214,151 @@ describe("OpenclawAdapter", () => {
       expect(config.models.providers.ollama.baseUrl).toBe('http://localhost:8000/v1?token="secret"&path=\\data');
       expect(config.models.providers.ollama.models[0].id).toBe('model-with-"quotes"-and-\\backslash');
     });
+
+    it("writes persona to workspace/SOUL.md when provided", async () => {
+      adapter = new OpenclawAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      await adapter.configure(backend, { persona: "You are a coding assistant." });
+
+      // Verify SOUL.md was written to workspace/
+      const personaPath = path.join(tempDir, "workspace", "SOUL.md");
+      const personaContent = await fs.readFile(personaPath, "utf-8");
+      expect(personaContent).toBe("You are a coding assistant.");
+
+      // Verify config was still written correctly
+      const configContent = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+      expect(config.agents.defaults.model.primary).toBe("ollama/llama3.2:3b");
+    });
+
+    it("does not write SOUL.md when persona is empty or whitespace", async () => {
+      adapter = new OpenclawAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      await adapter.configure(backend, { persona: "   " });
+
+      // Verify SOUL.md was NOT created
+      const personaPath = path.join(tempDir, "workspace", "SOUL.md");
+      await expect(fs.access(personaPath)).rejects.toThrow();
+    });
+
+    it("deep-merges gateway.port preserving existing gateway keys", async () => {
+      adapter = new OpenclawAdapter(tempDir);
+
+      // Write existing config with gateway.bind and gateway.auth
+      const existingConfig = {
+        meta: { lastTouchedVersion: "2026.8.1" },
+        gateway: {
+          bind: "0.0.0.0",
+          auth: { token: "existing-token-12345" }
+        },
+        models: {
+          providers: {
+            ollama: { api: "ollama", baseUrl: "http://localhost:11434/v1", models: [{ id: "llama3.2:3b", name: "Llama 3.2 3B" }] }
+          }
+        },
+        agents: {
+          defaults: {
+            models: { "ollama/llama3.2:3b": { alias: "Llama 3.2 3B (Local)" } },
+            model: { primary: "ollama/llama3.2:3b" },
+            modelPolicy: { allow: ["ollama/llama3.2:3b"] }
+          }
+        },
+        plugins: {
+          entries: { ollama: { enabled: true } },
+          allow: ["ollama"]
+        }
+      };
+      await fs.writeFile(configPath, JSON.stringify(existingConfig, null, 2), "utf-8");
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      await adapter.configure(backend, { gatewayPort: 18800 });
+
+      const configContent = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+
+      // Verify gateway.port was added
+      expect(config.gateway.port).toBe(18800);
+
+      // Verify existing gateway keys were preserved
+      expect(config.gateway.bind).toBe("0.0.0.0");
+      expect(config.gateway.auth.token).toBe("existing-token-12345");
+
+      // Verify other keys preserved
+      expect(config.meta.lastTouchedVersion).toBe("2026.8.1");
+    });
+
+    it("ignores out-of-range gateway ports", async () => {
+      adapter = new OpenclawAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      await adapter.configure(backend, { gatewayPort: 99999 });
+
+      const configContent = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+
+      // Verify gateway was NOT added (port out of range)
+      expect(config.gateway).toBeUndefined();
+    });
+
+    it("ignores invalid gateway ports (NaN)", async () => {
+      adapter = new OpenclawAdapter(tempDir);
+
+      const backend: ModelBackendConfig = {
+        id: "ollama-local",
+        kind: "ollama",
+        provider: "ollama",
+        baseUrl: "http://localhost:11434/v1",
+        protocol: "v1/chat/completions",
+        model: "llama3.2:3b",
+        secretRef: null,
+      };
+
+      await adapter.configure(backend, { gatewayPort: NaN as any });
+
+      const configContent = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+
+      // Verify gateway was NOT added (port invalid)
+      expect(config.gateway).toBeUndefined();
+    });
   });
 
   describe("install()", () => {
