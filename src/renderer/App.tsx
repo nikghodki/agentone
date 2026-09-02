@@ -9,6 +9,7 @@ import { FrameworkSelectPage } from "./pages/FrameworkSelectPage";
 import { ModelBackendPage } from "./pages/ModelBackendPage";
 import { TaskPage } from "./pages/TaskPage";
 import { CapabilitiesPage } from "./pages/CapabilitiesPage";
+import { ChannelsPage } from "./pages/ChannelsPage";
 import { Wizard } from "./pages/wizard/Wizard";
 
 function Placeholder({ name }: { name: string }) {
@@ -46,6 +47,8 @@ export function App() {
       return <TaskPage />;
     case "capabilities":
       return <CapabilitiesPage />;
+    case "channels":
+      return <ChannelsPage />;
     default:
       return <Placeholder name="Unknown View" />;
   }

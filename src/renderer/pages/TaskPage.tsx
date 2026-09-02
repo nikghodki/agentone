@@ -99,6 +99,14 @@ export function TaskPage() {
         <div className="flex gap-2">
           <Button
             variant="ghost"
+            onClick={() => setView("channels")}
+            disabled={!currentDeploymentId}
+            className="text-sm"
+          >
+            Channels
+          </Button>
+          <Button
+            variant="ghost"
             onClick={() => setShowSwitchConfirm(true)}
             disabled={!currentDeploymentId}
             className="text-sm"
