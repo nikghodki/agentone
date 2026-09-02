@@ -41,7 +41,7 @@ Curated set (framework-agnostic; final list in the plan): e.g. **Research a topi
 
 ## 7. Out of scope / deferrals
 - Sending the prompt from the app (the user copies + sends via their channel — matches the requirement). No agent round-trip.
-- Per-framework tailored use cases (generic set now; a per-framework pass is a possible follow-up).
+- Per-framework tailored use cases ~~(generic set now; a per-framework pass is a possible follow-up)~~ **✓ DELIVERED 2026-09-02** — 3 framework-tailored use cases now live (hermes: Browse a live web page; zeptoclaw: Remember something for later; openclaw: Automate a terminal task), each grounded in a verified capability per `docs/superpowers/plans/2026-09-02-agentone-per-framework-usecases.md`. `UseCaseBuilder` filters by `selectedFrameworkId` (universal + framework-specific shown). Further per-framework use cases can be added as capabilities are verified.
 - The light form on the still-dark Task/UseCasesPage surface uses a light container (as with ChannelsPage) until the broader dark→light re-theme follow-up.
 
 ## 8. Success criteria

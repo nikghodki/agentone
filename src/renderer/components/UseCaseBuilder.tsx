@@ -1,11 +1,12 @@
 import React, { useState } from "react";
-import { USE_CASES, UseCase, buildPrompt } from "../../shared/use-cases";
+import { useCasesForFramework, UseCase, buildPrompt } from "../../shared/use-cases";
 import { RadioCardGroup, RadioCard } from "./ui/RadioCardGroup";
 import { Input } from "./ui/Input";
 import { Textarea } from "./ui/Textarea";
 import { Select } from "./ui/Select";
 import { Button } from "./ui/Button";
 import { Card } from "./ui/Card";
+import { useAppStore } from "../store";
 
 export function UseCaseBuilder() {
   const [selectedUseCaseId, setSelectedUseCaseId] = useState<string | null>(
@@ -14,10 +15,16 @@ export function UseCaseBuilder() {
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState(false);
 
-  const selectedUseCase = USE_CASES.find((uc) => uc.id === selectedUseCaseId);
+  // Get selected framework from store
+  const selectedFrameworkId = useAppStore((state) => state.selectedFrameworkId);
 
-  // Convert USE_CASES to RadioCard format
-  const useCaseCards: RadioCard[] = USE_CASES.map((uc) => ({
+  // Filter use cases by framework
+  const filteredUseCases = useCasesForFramework(selectedFrameworkId);
+
+  const selectedUseCase = filteredUseCases.find((uc) => uc.id === selectedUseCaseId);
+
+  // Convert filtered use cases to RadioCard format
+  const useCaseCards: RadioCard[] = filteredUseCases.map((uc) => ({
     value: uc.id,
     title: uc.title,
     description: uc.description,
