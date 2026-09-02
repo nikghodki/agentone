@@ -113,6 +113,69 @@ describe("buildPrompt", () => {
     expect(result).not.toContain("  "); // No double space
     expect(result).not.toMatch(/\s\./); // No space before period
   });
+
+  it("preserves newlines and paragraph breaks in multiline content (Important 1)", () => {
+    const uc: UseCase = {
+      ...sampleUseCase,
+      fields: [{ key: "content", label: "Content", type: "textarea" }],
+      template: "Process this:\n\n{content}",
+    };
+    const multilineValue = "First paragraph\n\nSecond paragraph\n  indented line";
+    const result = buildPrompt(uc, { content: multilineValue });
+
+    expect(result).toContain("\n\n"); // Paragraph break preserved
+    expect(result).toContain("First paragraph");
+    expect(result).toContain("Second paragraph");
+    expect(result).toContain("indented line");
+  });
+
+  it("optional-segment syntax: removes whole segment when field empty (Important 2)", () => {
+    const uc: UseCase = {
+      ...sampleUseCase,
+      fields: [
+        { key: "task", label: "Task", type: "text" },
+        { key: "tone", label: "Tone", type: "text", optional: true },
+      ],
+      template: "Do this[[ with {tone} tone]]: {task}",
+    };
+    const result = buildPrompt(uc, { task: "write code", tone: "" });
+
+    expect(result).toBe("Do this: write code");
+    expect(result).not.toContain("with");
+    expect(result).not.toContain("tone");
+    expect(result).not.toContain("{tone}");
+  });
+
+  it("optional-segment syntax: keeps segment when field filled (Important 2)", () => {
+    const uc: UseCase = {
+      ...sampleUseCase,
+      fields: [
+        { key: "task", label: "Task", type: "text" },
+        { key: "tone", label: "Tone", type: "text", optional: true },
+      ],
+      template: "Do this[[ with {tone} tone]]: {task}",
+    };
+    const result = buildPrompt(uc, { task: "write code", tone: "formal" });
+
+    expect(result).toBe("Do this with formal tone: write code");
+    expect(result).not.toContain("[[");
+    expect(result).not.toContain("]]");
+  });
+
+  it("write-code with filled language reads correctly (Important 2)", () => {
+    const writeCode = USE_CASES.find((uc) => uc.id === "write-code");
+    expect(writeCode).toBeDefined();
+
+    const result = buildPrompt(writeCode!, {
+      task: "sort an array",
+      language: "Python",
+    });
+
+    expect(result).toContain("Python");
+    expect(result).toContain("Explain how it works");
+    expect(result).not.toContain("code in in"); // No duplication
+    expect(result).not.toContain("codePython"); // Has space
+  });
 });
 
 describe("USE_CASES catalog", () => {

@@ -107,7 +107,7 @@ export const USE_CASES: UseCase[] = [
         optional: true,
       },
     ],
-    template: "Write code{language} to {task}. Explain how it works.",
+    template: "Write code[[ in {language}]] to {task}. Explain how it works.",
   },
   {
     id: "debug",
@@ -246,7 +246,31 @@ export function buildPrompt(
 ): string {
   let result = useCase.template;
 
-  // Step 1: Substitute filled values with trimmed values
+  // Step 1: Handle optional segments [[ ... ]]
+  // Find all segments and process them
+  result = result.replace(/\[\[(.*?)\]\]/g, (match, content) => {
+    // Extract field references inside this segment
+    const fieldRefsInSegment = content.match(/\{(\w+)\}/g) || [];
+    const fieldKeysInSegment = fieldRefsInSegment.map((ref: string) =>
+      ref.replace(/[{}]/g, "")
+    );
+
+    // Check if ALL fields in this segment are empty
+    const allEmpty = fieldKeysInSegment.every((key: string) => {
+      const value = (values[key] || "").trim();
+      return !value;
+    });
+
+    if (allEmpty) {
+      // Remove the entire segment
+      return "";
+    } else {
+      // Keep the content but remove the [[ ]] markers
+      return content;
+    }
+  });
+
+  // Step 2: Substitute filled values with trimmed values
   useCase.fields.forEach((field) => {
     const value = (values[field.key] || "").trim();
     if (value) {
@@ -254,7 +278,7 @@ export function buildPrompt(
     }
   });
 
-  // Step 2: Remove empty optional field placeholders (just the token itself)
+  // Step 3: Remove empty optional field placeholders (just the token itself)
   useCase.fields.forEach((field) => {
     const value = (values[field.key] || "").trim();
     if (!value && field.optional) {
@@ -263,11 +287,10 @@ export function buildPrompt(
     }
   });
 
-  // Step 3: Normalize whitespace and punctuation
+  // Step 4: Normalize whitespace and punctuation (preserve newlines!)
   result = result
-    .replace(/\s{2,}/g, " ")                 // Collapse multiple spaces to single space
+    .replace(/[ \t]{2,}/g, " ")              // Collapse runs of spaces/tabs (NOT newlines)
     .replace(/\s+([.,!?;:])/g, "$1")         // Remove space before punctuation
-    .replace(/\s*\n\s*/g, "\n")              // Normalize newlines
     .replace(/\n{3,}/g, "\n\n")              // Max two consecutive newlines
     .trim();
 

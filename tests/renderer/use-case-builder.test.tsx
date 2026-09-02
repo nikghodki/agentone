@@ -96,9 +96,12 @@ describe("UseCaseBuilder", () => {
       expect(screen.getAllByRole("textbox").length).toBeGreaterThan(0);
     });
 
-    // Fill in a field
-    const firstInput = screen.getAllByRole("textbox")[0] as HTMLInputElement;
-    fireEvent.change(firstInput, { target: { value: "machine learning" } });
+    // Fill in all required fields (topic + depth)
+    const topicInput = screen.getByLabelText(/topic/i) as HTMLInputElement;
+    fireEvent.change(topicInput, { target: { value: "machine learning" } });
+
+    const depthSelect = screen.getByLabelText(/depth/i) as HTMLSelectElement;
+    fireEvent.change(depthSelect, { target: { value: "detailed analysis" } });
 
     // Click Copy button
     const copyButton = screen.getByRole("button", { name: /copy/i });
@@ -129,8 +132,12 @@ describe("UseCaseBuilder", () => {
       expect(screen.getAllByRole("textbox").length).toBeGreaterThan(0);
     });
 
-    const firstInput = screen.getAllByRole("textbox")[0];
-    fireEvent.change(firstInput, { target: { value: "test" } });
+    // Fill all required fields
+    const topicInput = screen.getByLabelText(/topic/i);
+    fireEvent.change(topicInput, { target: { value: "test" } });
+
+    const depthSelect = screen.getByLabelText(/depth/i);
+    fireEvent.change(depthSelect, { target: { value: "detailed analysis" } });
 
     // Copy
     const copyButton = screen.getByRole("button", { name: /copy/i });
@@ -142,7 +149,7 @@ describe("UseCaseBuilder", () => {
     });
   });
 
-  it("shows hint about pasting to agent", async () => {
+  it("shows hint about pasting to agent when required fields filled", async () => {
     const { UseCaseBuilder } = await import(
       "../../src/renderer/components/UseCaseBuilder"
     );
@@ -155,6 +162,17 @@ describe("UseCaseBuilder", () => {
       .closest("[role='radio']");
     fireEvent.click(researchCard!);
 
+    await waitFor(() => {
+      expect(screen.getAllByRole("textbox").length).toBeGreaterThan(0);
+    });
+
+    // Fill all required fields
+    const topicInput = screen.getByLabelText(/topic/i);
+    fireEvent.change(topicInput, { target: { value: "AI" } });
+
+    const depthSelect = screen.getByLabelText(/depth/i);
+    fireEvent.change(depthSelect, { target: { value: "detailed analysis" } });
+
     // Should show hint about pasting
     await waitFor(() => {
       const hint = screen.getByText(/paste.*agent/i);
@@ -162,16 +180,60 @@ describe("UseCaseBuilder", () => {
     });
   });
 
-  it("calls onDone callback when provided", async () => {
+  it("Copy button disabled when required fields empty (Minor 3)", async () => {
     const { UseCaseBuilder } = await import(
       "../../src/renderer/components/UseCaseBuilder"
     );
-    const onDone = vi.fn();
 
-    render(<UseCaseBuilder onDone={onDone} />);
+    render(<UseCaseBuilder />);
 
-    // This test ensures the component accepts onDone prop
-    // (actual usage will be in wizard step / page context)
-    expect(onDone).not.toHaveBeenCalled();
+    // Pick a use case
+    const researchCard = screen
+      .getByText(/Research a topic/i)
+      .closest("[role='radio']");
+    fireEvent.click(researchCard!);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("textbox").length).toBeGreaterThan(0);
+    });
+
+    // Copy should be disabled when required field is empty
+    const copyButton = screen.getByRole("button", { name: /copy/i }) as HTMLButtonElement;
+    expect(copyButton.disabled).toBe(true);
+
+    // Should show hint about filling required fields
+    expect(screen.getByText(/fill.*required/i)).toBeTruthy();
+  });
+
+  it("Copy button enabled once all required fields filled (Minor 3)", async () => {
+    const { UseCaseBuilder } = await import(
+      "../../src/renderer/components/UseCaseBuilder"
+    );
+
+    render(<UseCaseBuilder />);
+
+    // Pick a use case
+    const researchCard = screen
+      .getByText(/Research a topic/i)
+      .closest("[role='radio']");
+    fireEvent.click(researchCard!);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("textbox").length).toBeGreaterThan(0);
+    });
+
+    // Fill in required field (topic)
+    const topicInput = screen.getByLabelText(/topic/i) as HTMLInputElement;
+    fireEvent.change(topicInput, { target: { value: "AI" } });
+
+    // Also need to fill the depth select (required)
+    const depthSelect = screen.getByLabelText(/depth/i) as HTMLSelectElement;
+    fireEvent.change(depthSelect, { target: { value: "detailed analysis" } });
+
+    // Copy should now be enabled
+    await waitFor(() => {
+      const copyButton = screen.getByRole("button", { name: /copy/i }) as HTMLButtonElement;
+      expect(copyButton.disabled).toBe(false);
+    });
   });
 });

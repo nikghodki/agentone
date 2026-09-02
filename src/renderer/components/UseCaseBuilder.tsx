@@ -7,11 +7,7 @@ import { Select } from "./ui/Select";
 import { Button } from "./ui/Button";
 import { Card } from "./ui/Card";
 
-export interface UseCaseBuilderProps {
-  onDone?: () => void;
-}
-
-export function UseCaseBuilder({ onDone }: UseCaseBuilderProps) {
+export function UseCaseBuilder() {
   const [selectedUseCaseId, setSelectedUseCaseId] = useState<string | null>(
     null
   );
@@ -44,6 +40,16 @@ export function UseCaseBuilder({ onDone }: UseCaseBuilderProps) {
   const generatedPrompt = selectedUseCase
     ? buildPrompt(selectedUseCase, fieldValues)
     : "";
+
+  // Check if all required fields are filled
+  const allRequiredFieldsFilled = selectedUseCase
+    ? selectedUseCase.fields
+        .filter((field) => !field.optional)
+        .every((field) => {
+          const value = (fieldValues[field.key] || "").trim();
+          return value.length > 0;
+        })
+    : false;
 
   const handleCopy = async () => {
     try {
@@ -160,11 +166,13 @@ export function UseCaseBuilder({ onDone }: UseCaseBuilderProps) {
               </div>
               <div className="flex items-center justify-between">
                 <p className="text-sm text-slate-600">
-                  Paste this prompt to your agent in your messaging app.
+                  {allRequiredFieldsFilled
+                    ? "Paste this prompt to your agent in your messaging app."
+                    : "Fill in required fields to copy."}
                 </p>
                 <Button
                   onClick={handleCopy}
-                  disabled={!generatedPrompt}
+                  disabled={!allRequiredFieldsFilled}
                   variant={copied ? "secondary" : "primary"}
                 >
                   {copied ? "Copied!" : "Copy"}
