@@ -12,7 +12,7 @@
 After a framework is deployed, let the user connect messaging channels (Telegram, Slack, Discord, WhatsApp, Signal, …) through a **guided, verified** flow, and manage them anytime. Built in slices:
 
 - **Slice 2a (engine): DELIVERED (2026-09-02)** — optional `FrameworkAdapter` channel API (`listChannels`/`configureChannel`/`removeChannel`/`verifyChannel`/`requiresRestartAfterChannelChange`) implemented on all 3 adapters per the verified write-formats (openclaw `channels add --use-env`; hermes `platforms.*` + `.env`; zeptoclaw `config.json channels.*` + chmod 600); channel catalog (`src/shared/channels.ts`); `channels` DB table; `configure-channel`/`list-channels`/`remove-channel` IPC doing config → monitored gateway restart → verify (secrets via `Secrets`, catalog-derived cleanup). Live E2E (openclaw+telegram, dummy token) GO — add→restart→probe→list→remove verified, zero flag/parser mismatches (`docs/research/verified/phase2a-channel-e2e.md`).
-- **Slice 2b (UI):** the wizard **step 7** (optional, post-deploy) + a **Channels management surface** (list + live status + add/remove).
+- **Slice 2b (UI): DELIVERED (2026-09-02)** — shared `ChannelSetupForm` (catalog-filtered picker + guided fields + `configureChannel` staged progress + verify result); wizard **step 7** (optional/skippable, post-deploy: deploy → connect a channel → task); **Channels management surface** (`ChannelsPage`: list + status badges + add via the form + remove; reachable from Task). Catalog-driven → only Telegram offered until Slice 2c widens support.
 - **Slice 2c (breadth):** long-tail channels (generic form) + QR/interactive channels (WhatsApp-web guided pairing).
 
 Each slice ships independently and gets its own plan.
