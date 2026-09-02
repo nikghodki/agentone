@@ -107,7 +107,7 @@ export const USE_CASES: UseCase[] = [
         optional: true,
       },
     ],
-    template: "Write code to {task}. {language} Explain how it works.",
+    template: "Write code{language} to {task}. Explain how it works.",
   },
   {
     id: "debug",
@@ -246,7 +246,7 @@ export function buildPrompt(
 ): string {
   let result = useCase.template;
 
-  // Step 1: Substitute all filled values (required and optional)
+  // Step 1: Substitute filled values with trimmed values
   useCase.fields.forEach((field) => {
     const value = (values[field.key] || "").trim();
     if (value) {
@@ -254,45 +254,21 @@ export function buildPrompt(
     }
   });
 
-  // Step 2: Remove optional empty placeholders with smart cleanup
+  // Step 2: Remove empty optional field placeholders (just the token itself)
   useCase.fields.forEach((field) => {
     const value = (values[field.key] || "").trim();
     if (!value && field.optional) {
-      const placeholderRegex = `\\{${field.key}\\}`;
-
-      // Try different removal patterns in order of specificity
-
-      // Pattern 1: Sentence after period (e.g., ". Include {detail}")
-      result = result.replace(
-        new RegExp(`\\.\\s+[^.!?]*${placeholderRegex}[^.!?]*`, "g"),
-        "."
-      );
-
-      // Pattern 2: Beginning of new line/sentence with capital letter
-      result = result.replace(
-        new RegExp(`\\n+\\s*[A-Z][^.!?\\n]*${placeholderRegex}[^.!?]*`, "g"),
-        ""
-      );
-
-      // Pattern 3: After newline (for paragraph breaks)
-      result = result.replace(
-        new RegExp(`\\n+[^\\n]*${placeholderRegex}[^\\n]*`, "g"),
-        ""
-      );
-
-      // Pattern 4: Just the placeholder itself
-      result = result.replace(new RegExp(placeholderRegex, "g"), "");
+      // Simply remove the placeholder
+      result = result.replace(new RegExp(`\\{${field.key}\\}`, "g"), "");
     }
   });
 
-  // Step 3: Clean up whitespace and punctuation artifacts
+  // Step 3: Normalize whitespace and punctuation
   result = result
-    .replace(/\s{2,}/g, " ")            // Multiple spaces -> single space
-    .replace(/\s+\n/g, "\n")            // Trailing space before newline
-    .replace(/\n{3,}/g, "\n\n")         // Multiple newlines -> double newline
-    .replace(/\s+([.,!?])/g, "$1")      // Space before punctuation
-    .replace(/\.\s*\./g, ".")           // Double periods
-    .replace(/^\s+|\s+$/g, "")          // Trim start and end
+    .replace(/\s{2,}/g, " ")                 // Collapse multiple spaces to single space
+    .replace(/\s+([.,!?;:])/g, "$1")         // Remove space before punctuation
+    .replace(/\s*\n\s*/g, "\n")              // Normalize newlines
+    .replace(/\n{3,}/g, "\n\n")              // Max two consecutive newlines
     .trim();
 
   return result;

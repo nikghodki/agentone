@@ -82,6 +82,37 @@ describe("buildPrompt", () => {
     expect(result).not.toContain("{opt2}");
     expect(result).toContain("Test");
   });
+
+  it("preserves trailing sentence when optional field is empty (no clause deletion)", () => {
+    const uc: UseCase = {
+      ...sampleUseCase,
+      fields: [
+        { key: "x", label: "X", type: "text" },
+        { key: "opt", label: "Opt", type: "text", optional: true },
+      ],
+      template: "Do X. {opt} Do Y.",
+    };
+    const result = buildPrompt(uc, { x: "something", opt: "" });
+
+    expect(result).toBe("Do X. Do Y.");
+    expect(result).not.toContain("{opt}");
+    expect(result).not.toContain("  "); // No double space
+  });
+
+  it("write-code use case with empty language keeps 'Explain how it works'", () => {
+    const writeCode = USE_CASES.find((uc) => uc.id === "write-code");
+    expect(writeCode).toBeDefined();
+
+    const result = buildPrompt(writeCode!, {
+      task: "sort an array",
+      language: "",
+    });
+
+    expect(result).toContain("Explain how it works");
+    expect(result).not.toContain("{language}");
+    expect(result).not.toContain("  "); // No double space
+    expect(result).not.toMatch(/\s\./); // No space before period
+  });
 });
 
 describe("USE_CASES catalog", () => {
