@@ -7,6 +7,7 @@ import { ModelLocationStep } from "./ModelLocationStep";
 import { ModelLocalStep } from "./ModelLocalStep";
 import { ModelCloudStep } from "./ModelCloudStep";
 import { DeployStep } from "./DeployStep";
+import { ChannelStep } from "./ChannelStep";
 
 // Map wizard steps to the 4 visible groups in StepProgress
 function getStepProgressKey(wizardStep: WizardStep): string {
@@ -40,6 +41,8 @@ function getNextStep(current: WizardStep, modelBackendKind?: string): WizardStep
     case "model-cloud":
       return "deploy";
     case "deploy":
+      return "channel";
+    case "channel":
       return null; // End of wizard
     default:
       return null;
@@ -61,6 +64,8 @@ function getPreviousStep(current: WizardStep, modelBackendKind?: string): Wizard
     case "deploy":
       // Return to the model step we came from, inferred from modelBackendDraft.kind
       return modelBackendKind === "cloud" ? "model-cloud" : "model-local";
+    case "channel":
+      return "deploy";
     default:
       return null;
   }
@@ -122,6 +127,8 @@ export function Wizard() {
         return <ModelCloudStep />;
       case "deploy":
         return <DeployStep />;
+      case "channel":
+        return <ChannelStep />;
       default:
         return (
           <div className="text-slate-700">
@@ -139,7 +146,7 @@ export function Wizard() {
       current={stepProgressKey}
       canContinue={canContinue}
       onBack={canGoBack ? handleBack : undefined}
-      onContinue={wizardStep === "deploy" ? undefined : handleContinue}
+      onContinue={wizardStep === "deploy" || wizardStep === "channel" ? undefined : handleContinue}
     >
       {renderStep()}
     </WizardLayout>

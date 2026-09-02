@@ -88,7 +88,7 @@ describe("DeployStep", () => {
     const state = useAppStore.getState();
     expect(state.modelBackendId).toBe("backend-id-123");
     expect(state.currentDeploymentId).toBe("deployment-id-456");
-    expect(state.view).toBe("task");
+    expect(state.wizardStep).toBe("channel");
 
     unmount();
   });

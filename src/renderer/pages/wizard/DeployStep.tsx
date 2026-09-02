@@ -13,7 +13,7 @@ export function DeployStep() {
   const cloudForm = useAppStore((s) => s.cloudForm);
   const setModelBackendId = useAppStore((s) => s.setModelBackendId);
   const setCurrentDeploymentId = useAppStore((s) => s.setCurrentDeploymentId);
-  const setView = useAppStore((s) => s.setView);
+  const setWizardStep = useAppStore((s) => s.setWizardStep);
 
   const [deployState, setDeployState] = useState<DeployState>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -51,10 +51,10 @@ export function DeployStep() {
         backendId
       );
 
-      // Step 4: Update store and navigate to task page
+      // Step 4: Update store and navigate to channel step
       setCurrentDeploymentId(deployment.id);
       setDeployState("success");
-      setView("task");
+      setWizardStep("channel");
     } catch (err) {
       console.error("Deploy failed:", err);
       setDeployState("error");
