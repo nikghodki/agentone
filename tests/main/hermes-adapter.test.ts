@@ -1430,6 +1430,30 @@ discord:
       expect(channels).toContainEqual({ id: "slack", enabled: true });
       expect(channels).toContainEqual({ id: "discord", enabled: true });
     });
+
+    // Task 3 (Slice 2c): After removeChannel("discord"), listChannels reports enabled:false
+    it("after removeChannel discord, listChannels returns discord with enabled:false", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new HermesAdapter(tempDir, mockProbe);
+
+      // Setup: configure discord channel
+      await adapter.configureChannel({
+        id: "discord",
+        config: {},
+        secrets: { botToken: "test-token" }
+      });
+
+      // Verify discord is enabled before removal
+      let channels = await adapter.listChannels();
+      expect(channels).toContainEqual({ id: "discord", enabled: true });
+
+      // Remove discord
+      await adapter.removeChannel("discord");
+
+      // Verify discord is now disabled (not removed from config, just enabled:false)
+      channels = await adapter.listChannels();
+      expect(channels).toContainEqual({ id: "discord", enabled: false });
+    });
   });
 
   // Task 3 (Slice 2c): Discord special handling

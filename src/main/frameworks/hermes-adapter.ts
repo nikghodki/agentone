@@ -988,16 +988,34 @@ export class HermesAdapter implements FrameworkAdapter {
 
     let inPlatforms = false;
     let currentPlatform: string | null = null;
-    let foundDiscord = false;
+    let inDiscord = false;
+    let discordEnabled: boolean | null = null;
 
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       const trimmed = line.trim();
 
       // Task 3 (Slice 2c): Detect top-level discord: section
       if (trimmed === "discord:" && !line.startsWith(" ")) {
-        foundDiscord = true;
-        channels.push({ id: "discord", enabled: true });
+        inDiscord = true;
+        discordEnabled = null; // Reset for scanning
         continue;
+      }
+
+      // Exit discord section when we hit another top-level key
+      if (inDiscord && trimmed && !line.startsWith(" ") && !trimmed.startsWith("#")) {
+        // Push discord channel with found enabled state (default true if not found)
+        channels.push({ id: "discord", enabled: discordEnabled ?? true });
+        inDiscord = false;
+        discordEnabled = null;
+      }
+
+      // Scan for enabled: key within discord section
+      if (inDiscord) {
+        const enabledMatch = line.match(/^\s+enabled:\s*(true|false)/);
+        if (enabledMatch) {
+          discordEnabled = enabledMatch[1] === "true";
+        }
       }
 
       // Detect platforms: section
@@ -1031,6 +1049,11 @@ export class HermesAdapter implements FrameworkAdapter {
           }
         }
       }
+    }
+
+    // If we're still in discord at the end, push it
+    if (inDiscord) {
+      channels.push({ id: "discord", enabled: discordEnabled ?? true });
     }
 
     return channels;

@@ -279,16 +279,47 @@ describe("ChannelSetupForm", () => {
     expect(screen.queryByLabelText("Bot Token")).toBeFalsy();
     expect(screen.queryByLabelText("App Token")).toBeFalsy();
 
-    // Should show "Start pairing" button
-    expect(screen.getByRole("button", { name: /Start pairing/i })).toBeTruthy();
+    // Should show "Done" button (purely guided, no configureChannel calls)
+    expect(screen.getByRole("button", { name: /Done/i })).toBeTruthy();
   });
 
-  it("qr channel (whatsapp_web): Start pairing calls configureChannel with empty secrets", async () => {
+  it("qr channel (whatsapp_web): renders guided pairing instructions with per-framework command and does NOT call configureChannel", async () => {
     const { ChannelSetupForm } = await import("../../src/renderer/components/ChannelSetupForm");
 
-    mockConfigureChannel.mockResolvedValue({ connected: false, detail: "Waiting for QR scan" });
+    render(
+      <ChannelSetupForm
+        deploymentId="dep1"
+        frameworkId="hermes"
+      />
+    );
 
-    const { container } = render(
+    // Pick whatsapp_web
+    const whatsappCard = screen.getByText("WhatsApp Web").closest("[role='radio']");
+    fireEvent.click(whatsappCard!);
+
+    // Should show guided pairing callout
+    expect(screen.getByText(/Pairing happens in the framework itself by running a terminal command/i)).toBeTruthy();
+
+    // Should show the correct per-framework command for hermes
+    expect(screen.getByText("hermes whatsapp")).toBeTruthy();
+
+    // Should show Done button instead of Start pairing/Check status
+    expect(screen.getByRole("button", { name: /Done/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Start pairing/i })).toBeFalsy();
+    expect(screen.queryByRole("button", { name: /Check status/i })).toBeFalsy();
+
+    // Clicking Done should NOT call configureChannel
+    const doneButton = screen.getByRole("button", { name: /Done/i });
+    fireEvent.click(doneButton);
+
+    // configureChannel should NEVER be called for QR channels
+    expect(mockConfigureChannel).not.toHaveBeenCalled();
+  });
+
+  it("qr channel (whatsapp_web): shows correct command for different frameworks", async () => {
+    const { ChannelSetupForm } = await import("../../src/renderer/components/ChannelSetupForm");
+
+    const { unmount } = render(
       <ChannelSetupForm
         deploymentId="dep1"
         frameworkId="openclaw"
@@ -299,52 +330,24 @@ describe("ChannelSetupForm", () => {
     const whatsappCard = screen.getByText("WhatsApp Web").closest("[role='radio']");
     fireEvent.click(whatsappCard!);
 
-    // Click "Start pairing"
-    const startButton = screen.getByRole("button", { name: /Start pairing/i });
-    fireEvent.click(startButton);
+    // Should show openclaw command
+    expect(screen.getByText("openclaw channels login --channel whatsapp")).toBeTruthy();
 
-    // Should call configureChannel with empty config and secrets
-    await waitFor(() => {
-      expect(mockConfigureChannel).toHaveBeenCalledWith("dep1", {
-        id: "whatsapp_web",
-        config: {},
-        secrets: {},
-      });
-    }, { container });
+    // Unmount and test with zeptoclaw
+    unmount();
 
-    // Should show the pairing guidance detail message
-    await waitFor(() => {
-      expect(screen.getByText(/Scan the QR code in your framework to complete pairing/i)).toBeTruthy();
-    }, { container });
-  });
-
-  it("qr channel (whatsapp_web): Check status button appears and calls verify", async () => {
-    const { ChannelSetupForm } = await import("../../src/renderer/components/ChannelSetupForm");
-
-    mockConfigureChannel.mockResolvedValue({ connected: false, detail: "Waiting for QR scan" });
-
-    const { container } = render(
+    render(
       <ChannelSetupForm
         deploymentId="dep1"
-        frameworkId="openclaw"
+        frameworkId="zeptoclaw"
       />
     );
 
-    // Pick whatsapp_web and start pairing
-    const whatsappCard = screen.getByText("WhatsApp Web").closest("[role='radio']");
-    fireEvent.click(whatsappCard!);
-    const startButton = screen.getByRole("button", { name: /Start pairing/i });
-    fireEvent.click(startButton);
+    const whatsappCard2 = screen.getByText("WhatsApp Web").closest("[role='radio']");
+    fireEvent.click(whatsappCard2!);
 
-    await waitFor(() => {
-      expect(mockConfigureChannel).toHaveBeenCalled();
-    }, { container });
-
-    // Should show "Check status" button after pairing started
-    await waitFor(() => {
-      const checkButton = screen.getByRole("button", { name: /Check status/i });
-      expect(checkButton).toBeTruthy();
-    }, { container });
+    // Should show zeptoclaw command
+    expect(screen.getByText("zeptoclaw channel setup whatsapp_web")).toBeTruthy();
   });
 
   it("no regression: telegram credential flow still works", async () => {

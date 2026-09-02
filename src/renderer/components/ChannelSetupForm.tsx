@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { CHANNELS, ChannelDef, ChannelField } from "@shared/channels";
+import { CHANNELS } from "@shared/channels";
 import { RadioCardGroup, RadioCard } from "./ui/RadioCardGroup";
 import { Input } from "./ui/Input";
 import { Callout } from "./ui/Callout";
@@ -98,55 +98,22 @@ export function ChannelSetupForm({
     }
   };
 
-  const handleStartPairing = async () => {
-    if (!selectedChannel) return;
-
-    setConnectState("connecting");
-    setConnectDetail("");
-
-    try {
-      setProgressLabel("Starting pairing...");
-      await window.electronAPI.configureChannel(deploymentId, {
-        id: selectedChannel.id,
-        config: {},
-        secrets: {},
-      });
-
-      // Move to verifying state after starting pairing
-      setConnectState("verifying");
-      setConnectDetail("Scan the QR code in your framework to complete pairing.");
-    } catch (err) {
-      setConnectState("error");
-      setConnectDetail(err instanceof Error ? err.message : "Failed to start pairing");
+  const getQrPairingCommand = (frameworkId: string): string => {
+    switch (frameworkId) {
+      case "openclaw":
+        return "openclaw channels login --channel whatsapp";
+      case "hermes":
+        return "hermes whatsapp";
+      case "zeptoclaw":
+        return "zeptoclaw channel setup whatsapp_web";
+      default:
+        return "run your framework's WhatsApp pairing command";
     }
   };
 
-  const handleCheckStatus = async () => {
+  const handleQrDone = () => {
     if (!selectedChannel) return;
-
-    setConnectState("connecting");
-    setConnectDetail("");
-
-    try {
-      setProgressLabel("Checking status...");
-      const result = await window.electronAPI.configureChannel(deploymentId, {
-        id: selectedChannel.id,
-        config: {},
-        secrets: {},
-      });
-
-      if (result.connected) {
-        setConnectState("success");
-        setConnectDetail("Connected successfully!");
-        onConnected?.(selectedChannel.id);
-      } else {
-        setConnectState("verifying");
-        setConnectDetail(result.detail || "Still waiting for QR scan...");
-      }
-    } catch (err) {
-      setConnectState("verifying");
-      setConnectDetail(err instanceof Error ? err.message : "Status check failed");
-    }
+    onConnected?.(selectedChannel.id);
   };
 
   // No channels available for this framework
@@ -204,11 +171,19 @@ export function ChannelSetupForm({
             </>
           )}
 
-          {/* QR channel: no field inputs, show pairing guidance */}
-          {selectedChannel.kind === "qr" && connectState === "verifying" && (
-            <Callout tone="info">
-              {connectDetail}
-            </Callout>
+          {/* QR channel: show guided pairing instructions only */}
+          {selectedChannel.kind === "qr" && (
+            <>
+              <Callout tone="info">
+                Pairing happens in the framework itself by running a terminal command that displays a QR code. Scan it with your phone to complete pairing.
+              </Callout>
+              <div className="rounded-lg bg-slate-50 p-4 border border-slate-200">
+                <h4 className="text-sm font-medium text-slate-900 mb-2">Pairing command</h4>
+                <code className="text-sm text-indigo-700 font-mono">
+                  {getQrPairingCommand(frameworkId)}
+                </code>
+              </div>
+            </>
           )}
 
           {/* Connect button and progress */}
@@ -236,23 +211,13 @@ export function ChannelSetupForm({
             </Button>
           )}
 
-          {/* QR channel: Start pairing button */}
-          {selectedChannel.kind === "qr" && connectState === "idle" && (
+          {/* QR channel: Done button */}
+          {selectedChannel.kind === "qr" && (
             <Button
               variant="primary"
-              onClick={handleStartPairing}
+              onClick={handleQrDone}
             >
-              Start pairing
-            </Button>
-          )}
-
-          {/* QR channel: Check status button (after pairing started) */}
-          {selectedChannel.kind === "qr" && connectState === "verifying" && (
-            <Button
-              variant="primary"
-              onClick={handleCheckStatus}
-            >
-              Check status
+              Done
             </Button>
           )}
 
