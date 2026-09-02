@@ -10,7 +10,7 @@
 
 A modern, professional, **light & approachable** desktop UX with a single **guided setup wizard** that walks a user from "nothing" to "a deployed agent they can talk to." Delivered in phases:
 
-- **Phase 1 (this spec):** visual design system + wizard steps **1–6** (framework → config → model → deploy) and **10** (remove/switch).
+- **Phase 1 (this spec): DELIVERED (2026-09-02)** — light design system + UI kit; guided wizard steps **1–6** (framework → config → model{local|cloud} → deploy) and **10** (switch/remove framework). Deferral: step-2 Advanced (persona/system-prompt, gateway port) is collected in the wizard but **not yet applied at deploy** (the adapter `configure()`/`deployFramework` path doesn't accept those params) — a follow-up; the default (no-advanced) path is unaffected.
 - **Phase 2 (later):** messaging-channel setup (steps 7–8).
 - **Phase 3 (later):** use-case prompt generator (step 9).
 
