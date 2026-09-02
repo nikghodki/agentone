@@ -271,11 +271,31 @@ describe("configure-channel IPC handlers", () => {
       expect(adapter.start).toHaveBeenCalled();
       expect(db.removeChannelRecord).toHaveBeenCalledWith("dep1", "telegram");
 
-      // Secrets deleted (all refs for this channel)
+      // Secrets deleted - telegram has 1 secret field (botToken) per CHANNELS catalog
       expect(secrets.delete).toHaveBeenCalledWith("channel:dep1:telegram:botToken");
-      expect(secrets.delete).toHaveBeenCalledWith("channel:dep1:telegram:otherSecret");
 
       expect(result).toEqual({ removed: true });
+    });
+
+    it("slack channel: deletes ALL 3 secret fields (botToken, signingSecret, appToken) - catalog-derived, no orphans", async () => {
+      const adapter = {
+        removeChannel: vi.fn().mockResolvedValue({ removed: true }),
+        requiresRestartAfterChannelChange: vi.fn().mockReturnValue(false),
+      };
+      const db = { removeChannelRecord: vi.fn(), getChannels: vi.fn().mockReturnValue([]) };
+      const secrets = { delete: vi.fn() };
+
+      await handleRemoveChannel("dep1", "slack", {
+        db: db as any,
+        getAdapter: () => adapter as any,
+        secrets: secrets as any,
+      });
+
+      // Slack has 3 secret fields per CHANNELS catalog
+      expect(secrets.delete).toHaveBeenCalledWith("channel:dep1:slack:botToken");
+      expect(secrets.delete).toHaveBeenCalledWith("channel:dep1:slack:signingSecret");
+      expect(secrets.delete).toHaveBeenCalledWith("channel:dep1:slack:appToken");
+      expect(secrets.delete).toHaveBeenCalledTimes(3); // no more, no less
     });
 
     it("requiresRestart false: skips restart", async () => {

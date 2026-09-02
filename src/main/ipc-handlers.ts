@@ -12,6 +12,7 @@ import { HermesAdapter } from "./frameworks/hermes-adapter";
 import { OpenclawAdapter } from "./frameworks/openclaw-adapter";
 import { CapabilityOrchestrator } from "./capability-orchestrator";
 import { Secrets } from "./secrets";
+import { CHANNELS } from "../shared/channels";
 import type { ModelChoice, UserProfile, TaskUsage } from "../shared/types";
 import type { FrameworkAdapter, Deployment, ModelBackendConfig } from "../shared/v2-types";
 
@@ -350,12 +351,23 @@ export async function handleRemoveChannel(
   // Remove channel record from database
   deps.db.removeChannelRecord(deploymentId, id);
 
-  // Delete all secrets for this channel
+  // Delete all secrets for this channel (catalog-derived)
   // Secrets are stored as: channel:deploymentId:channelId:field
-  // We need to delete all field variants (botToken, otherSecret, etc.)
-  const secretFields = ["botToken", "otherSecret", "token", "signingSecret", "appToken"];
-  for (const field of secretFields) {
-    deps.secrets.delete(`channel:${deploymentId}:${id}:${field}`);
+  const channelDef = CHANNELS.find((ch) => ch.id === id);
+  if (channelDef) {
+    // Primary path: delete secrets from the channel's field catalog
+    for (const field of channelDef.fields) {
+      if (field.secret) {
+        deps.secrets.delete(`channel:${deploymentId}:${id}:${field.key}`);
+      }
+    }
+  } else {
+    // Fallback for generic/long-tail channels not in the catalog (Slice 2c follow-up):
+    // delete common secret field names to avoid orphans
+    const commonSecretFields = ["botToken", "token"];
+    for (const field of commonSecretFields) {
+      deps.secrets.delete(`channel:${deploymentId}:${id}:${field}`);
+    }
   }
 
   return result;
