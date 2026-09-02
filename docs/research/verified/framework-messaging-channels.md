@@ -917,6 +917,635 @@ v16.16.0
 
 ---
 
+## Channel Write-Format (Slice 2a)
+
+**Verification Date:** 2026-09-02  
+**Task:** AgentOne Redesign Phase 2 Slice 2a - Channel config write-format capture  
+**Scope:** EXACT config JSON/YAML snippets + CLI flags for programmatic channel setup (telegram/slack/discord + whatsapp_cloud/signal)
+
+### Summary: Secret Storage per Framework
+
+| Framework | Token Storage | Injectable via Env? | Notes |
+|-----------|---------------|---------------------|-------|
+| **ZeptoClaw** | Config file (plaintext JSON) | ❌ NO | Tokens written directly to `~/.zeptoclaw/config.json` |
+| **Hermes** | `.env` file + config YAML | ✅ YES | Tokens in `~/.hermes/.env`, platform config in `config.yaml` |
+| **OpenClaw** | Config file OR env var | ✅ YES | `--use-env` flag reads from env; otherwise written to `~/.openclaw/openclaw.json` |
+
+**CRITICAL:** ZeptoClaw stores tokens in plaintext config file. Hermes and OpenClaw support env var injection.
+
+---
+
+### ZeptoClaw: Channel Write-Format (VERIFIED)
+
+**Method:** Interactive CLI writes to `~/.zeptoclaw/config.json`  
+**Command:** `zeptoclaw channel setup <CHANNEL_NAME>` (interactive prompts)  
+**Write Location:** `config.channels.<channel_name>`  
+**Token Storage:** IN config file (plaintext) — NOT injectable via env
+
+#### Telegram
+
+```json
+{
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "token": "<BOT_TOKEN>",
+      "allow_from": [],
+      "deny_by_default": false,
+      "allow_usernames": false,
+      "reactions": true
+    }
+  }
+}
+```
+
+**Required Fields:**
+- `token` (string): Bot token from @BotFather
+- `enabled` (boolean): Must be `true` to activate
+
+**Optional Fields:**
+- `allow_from` (array): Allowed Telegram user IDs (numeric)
+- `deny_by_default` (boolean): Reject unlisted users
+- `allow_usernames` (boolean): Allow username-based allowlist (not recommended)
+- `reactions` (boolean): Enable reaction responses
+
+**Setup:** Run `zeptoclaw channel setup telegram`, provide bot token when prompted.
+
+#### Discord
+
+```json
+{
+  "channels": {
+    "discord": {
+      "enabled": true,
+      "token": "<BOT_TOKEN>",
+      "allow_from": [],
+      "deny_by_default": false
+    }
+  }
+}
+```
+
+**Required Fields:**
+- `token` (string): Discord bot token from Developer Portal
+- `enabled` (boolean): Must be `true` to activate
+
+**Optional Fields:**
+- `allow_from` (array): Allowed Discord user IDs
+- `deny_by_default` (boolean): Reject unlisted users
+
+**Setup:** Run `zeptoclaw channel setup discord`, provide bot token when prompted.
+
+#### Slack
+
+```json
+{
+  "channels": {
+    "slack": {
+      "enabled": true,
+      "bot_token": "xoxb-<BOT_TOKEN>",
+      "app_token": "xapp-<APP_TOKEN>",
+      "allow_from": [],
+      "deny_by_default": false
+    }
+  }
+}
+```
+
+**Required Fields:**
+- `bot_token` (string): Slack bot token (starts with `xoxb-`)
+- `app_token` (string): Slack app-level token (starts with `xapp-`)
+- `enabled` (boolean): Must be `true` to activate
+
+**Optional Fields:**
+- `allow_from` (array): Allowed Slack user IDs
+- `deny_by_default` (boolean): Reject unlisted users
+
+**Setup:** Run `zeptoclaw channel setup slack`, provide bot token and app token when prompted.  
+**Note:** ZeptoClaw uses app-level token (socket mode), NOT signing secret.
+
+#### WhatsApp Cloud
+
+```json
+{
+  "channels": {
+    "whatsapp_cloud": {
+      "enabled": true,
+      "phone_number_id": "<PHONE_NUMBER_ID>",
+      "access_token": "<ACCESS_TOKEN>",
+      "webhook_verify_token": "<VERIFY_TOKEN>",
+      "app_secret": "<APP_SECRET>"
+    }
+  }
+}
+```
+
+**Required Fields:**
+- `phone_number_id` (string): Meta Business phone number ID
+- `access_token` (string): Permanent access token from Meta
+- `webhook_verify_token` (string): Custom webhook verification token
+- `app_secret` (string): Meta app secret for signature verification (optional but recommended)
+- `enabled` (boolean): Must be `true` to activate
+
+**Setup:** Run `zeptoclaw channel setup whatsapp_cloud`, provide credentials when prompted.  
+**Note:** Requires Meta Business account and public HTTPS webhook endpoint.
+
+#### Signal
+
+**Status:** ❌ NOT SUPPORTED by ZeptoClaw
+
+---
+
+### Hermes: Channel Write-Format (VERIFIED)
+
+**Method:** Manual config file edit (`~/.hermes/config.yaml` + `~/.hermes/.env`)  
+**Command:** `hermes gateway setup` (interactive, writes config) OR manual YAML edit  
+**Write Location:** `config.yaml` (platform config) + `.env` (secrets)  
+**Token Storage:** `.env` file (env vars) — ✅ INJECTABLE
+
+**Architecture:** Two-file approach:
+1. `~/.hermes/config.yaml` - Platform settings (enabled, behavior flags)
+2. `~/.hermes/.env` - Secrets (bot tokens, API keys)
+
+#### Telegram
+
+**Config YAML** (`~/.hermes/config.yaml`):
+```yaml
+platforms:
+  telegram:
+    enabled: true
+    reply_to_mode: "first"  # off | first | all
+    allowed_chats: []       # Telegram chat IDs
+```
+
+**Environment Variables** (`~/.hermes/.env`):
+```bash
+TELEGRAM_BOT_TOKEN=<BOT_TOKEN>
+```
+
+**Required Fields:**
+- Config: `platforms.telegram.enabled: true`
+- Env: `TELEGRAM_BOT_TOKEN`
+
+**Optional Fields:**
+- `reply_to_mode`: Response behavior (`off`, `first`, `all`)
+- `allowed_chats`: Array of allowed Telegram chat IDs
+
+#### Discord
+
+**Config YAML**:
+```yaml
+discord:
+  require_mention: true
+  auto_thread: true
+  reactions: true
+  free_response_channels: ""
+```
+
+**Environment Variables**:
+```bash
+DISCORD_BOT_TOKEN=<BOT_TOKEN>
+```
+
+**Required Fields:**
+- Config: `discord` section (structure shown above)
+- Env: `DISCORD_BOT_TOKEN`
+
+**Optional Fields:**
+- `require_mention`: Require @mention to respond
+- `auto_thread`: Auto-create threads for conversations
+- `reactions`: Enable reaction responses
+- `free_response_channels`: Channels that don't require mention (comma-separated)
+
+**Note:** Discord config is top-level, NOT under `platforms.` key.
+
+#### Slack
+
+**Config YAML**:
+```yaml
+platforms:
+  slack:
+    enabled: true
+```
+
+**Environment Variables**:
+```bash
+SLACK_BOT_TOKEN=xoxb-<BOT_TOKEN>
+SLACK_APP_TOKEN=xapp-<APP_TOKEN>
+SLACK_SIGNING_SECRET=<SIGNING_SECRET>
+```
+
+**Required Fields:**
+- Config: `platforms.slack.enabled: true`
+- Env: `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `SLACK_SIGNING_SECRET`
+
+**Helper Command:**
+```bash
+hermes slack manifest  # Generate Slack app manifest for easy setup
+```
+
+#### WhatsApp Cloud
+
+**Config YAML**:
+```yaml
+platforms:
+  whatsapp-cloud:
+    enabled: true
+```
+
+**Environment Variables**:
+```bash
+WHATSAPP_CLOUD_PHONE_NUMBER_ID=<PHONE_NUMBER_ID>
+WHATSAPP_CLOUD_ACCESS_TOKEN=<ACCESS_TOKEN>
+WHATSAPP_CLOUD_WEBHOOK_VERIFY_TOKEN=<VERIFY_TOKEN>
+```
+
+**Required Fields:**
+- Config: `platforms.whatsapp-cloud.enabled: true`
+- Env: Phone number ID, access token, webhook verify token
+
+**Setup Command:**
+```bash
+hermes whatsapp-cloud  # Interactive setup helper
+```
+
+#### Signal
+
+**Config YAML**:
+```yaml
+platforms:
+  signal:
+    enabled: true
+    phone_number: "+1234567890"  # E.164 format
+```
+
+**Required:**
+- `signal-cli` installed and configured separately
+- Phone number in E.164 format
+
+**Status:** ASSUMED (listed in platform_toolsets, not tested)
+
+---
+
+### OpenClaw: Channel Write-Format (VERIFIED)
+
+**Method:** Non-interactive CLI flags OR `~/.openclaw/openclaw.json` direct edit  
+**Command:** `openclaw channels add --channel <name> [FLAGS]`  
+**Write Location:** `config.channels.<channel_name>`  
+**Token Storage:** Config file OR env var (via `--use-env` flag) — ✅ INJECTABLE
+
+**Architecture:** Two-part config:
+1. `plugins.entries.<channel>.enabled: true` + `plugins.allow: ["<channel>"]` - Plugin enablement
+2. `channels.<channel>` - Channel credentials and settings
+
+**Setup Pattern:**
+1. Install plugin: `openclaw plugins install <channel> --accept-capabilities`
+2. Add channel: `openclaw channels add --channel <channel> [flags]`
+3. Start gateway: `openclaw gateway`
+
+#### Telegram
+
+**CLI Flags:**
+```bash
+openclaw channels add --channel telegram --token <BOT_TOKEN>
+# OR use env var
+openclaw channels add --channel telegram --use-env  # Reads TELEGRAM_BOT_TOKEN
+# OR use token file
+openclaw channels add --channel telegram --token-file ~/.secrets/telegram-token
+```
+
+**Config JSON** (`~/.openclaw/openclaw.json`):
+```json
+{
+  "plugins": {
+    "entries": {
+      "telegram": {
+        "enabled": true
+      }
+    },
+    "allow": ["telegram"]
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "botToken": "<BOT_TOKEN>"
+    }
+  }
+}
+```
+
+**Required Flags:**
+- `--channel telegram`
+- `--token <token>` OR `--use-env` OR `--token-file <path>`
+
+**Environment Variable (if using `--use-env`):**
+```bash
+TELEGRAM_BOT_TOKEN=<BOT_TOKEN>
+```
+
+#### Discord
+
+**CLI Flags:**
+```bash
+openclaw channels add --channel discord --token <BOT_TOKEN>
+# OR use env var
+openclaw channels add --channel discord --use-env  # Reads DISCORD_BOT_TOKEN
+```
+
+**Config JSON**:
+```json
+{
+  "plugins": {
+    "entries": {
+      "discord": {
+        "enabled": true
+      }
+    },
+    "allow": ["discord"]
+  },
+  "channels": {
+    "discord": {
+      "enabled": true,
+      "token": "<BOT_TOKEN>"
+    }
+  }
+}
+```
+
+**Required Flags:**
+- `--channel discord`
+- `--token <token>` OR `--use-env`
+
+**Environment Variable (if using `--use-env`):**
+```bash
+DISCORD_BOT_TOKEN=<BOT_TOKEN>
+```
+
+#### Slack
+
+**CLI Flags:**
+```bash
+openclaw channels add --channel slack \
+  --bot-token xoxb-<BOT_TOKEN> \
+  --signing-secret <SIGNING_SECRET> \
+  --app-token xapp-<APP_TOKEN>  # Optional for socket mode
+
+# OR use env vars
+openclaw channels add --channel slack --use-env
+```
+
+**Config JSON**:
+```json
+{
+  "plugins": {
+    "entries": {
+      "slack": {
+        "enabled": true
+      }
+    },
+    "allow": ["slack"]
+  },
+  "channels": {
+    "slack": {
+      "enabled": true,
+      "botToken": "xoxb-<BOT_TOKEN>",
+      "appToken": "xapp-<APP_TOKEN>",
+      "signingSecret": "<SIGNING_SECRET>"
+    }
+  }
+}
+```
+
+**Required Flags:**
+- `--channel slack`
+- `--bot-token <token>` (starts with `xoxb-`)
+- `--signing-secret <secret>`
+- `--app-token <token>` (optional, for socket mode)
+
+**Optional Flags:**
+- `--mode <mode>` - Connection mode
+- `--identity <kind>` - Slack identity type
+- `--user-token <token>` - User token (optional)
+
+**Environment Variables (if using `--use-env`):**
+```bash
+SLACK_BOT_TOKEN=xoxb-<BOT_TOKEN>
+SLACK_APP_TOKEN=xapp-<APP_TOKEN>
+SLACK_SIGNING_SECRET=<SIGNING_SECRET>
+```
+
+#### WhatsApp Cloud
+
+**Status:** ❌ NOT SUPPORTED by OpenClaw (only personal WhatsApp via QR pairing)
+
+#### Signal
+
+**CLI Flags:**
+```bash
+# External native transport (signal-cli HTTP daemon)
+openclaw channels add --channel signal \
+  --signal-number +1234567890 \
+  --signal-transport external-native \
+  --http-url http://localhost:8080
+
+# Container transport (OpenClaw manages signal-cli)
+openclaw channels add --channel signal \
+  --signal-number +1234567890 \
+  --signal-transport container
+
+# Local CLI path
+openclaw channels add --channel signal \
+  --signal-number +1234567890 \
+  --cli-path /usr/local/bin/signal-cli
+```
+
+**Config JSON** (external-native example):
+```json
+{
+  "plugins": {
+    "entries": {
+      "signal": {
+        "enabled": true
+      }
+    },
+    "allow": ["signal"]
+  },
+  "channels": {
+    "signal": {
+      "enabled": true,
+      "number": "+1234567890",
+      "transport": "external-native",
+      "httpUrl": "http://localhost:8080"
+    }
+  }
+}
+```
+
+**Required Flags:**
+- `--channel signal`
+- `--signal-number <E.164>` (phone number in E.164 format)
+- `--signal-transport <kind>` (external-native OR container)
+- `--http-url <url>` OR `--cli-path <path>` (depends on transport)
+
+**Additional Flags:**
+- `--http-host <host>` - Signal HTTP daemon host
+- `--http-port <port>` - Signal HTTP daemon port
+
+**Prerequisites:** signal-cli installed (external-native) OR Docker (container)
+
+---
+
+### Implementation Guidance: `configureChannel` Function
+
+**Per Framework:**
+
+#### ZeptoClaw
+```typescript
+// ZeptoClaw writes tokens IN config file (plaintext)
+// App must merge config JSON directly
+async function configureChannelZeptoClaw(channel: string, credentials: ChannelCredentials) {
+  const configPath = "~/.zeptoclaw/config.json";
+  const config = readJSON(configPath);
+  
+  if (channel === "telegram") {
+    config.channels.telegram = {
+      enabled: true,
+      token: credentials.botToken,
+      allow_from: credentials.allowedUserIds || [],
+      deny_by_default: false,
+      allow_usernames: false,
+      reactions: true
+    };
+  } else if (channel === "slack") {
+    config.channels.slack = {
+      enabled: true,
+      bot_token: credentials.botToken,
+      app_token: credentials.appToken,
+      allow_from: [],
+      deny_by_default: false
+    };
+  } else if (channel === "discord") {
+    config.channels.discord = {
+      enabled: true,
+      token: credentials.botToken,
+      allow_from: [],
+      deny_by_default: false
+    };
+  }
+  
+  writeJSON(configPath, config);
+}
+```
+
+#### Hermes
+```typescript
+// Hermes uses config.yaml + .env (tokens in env)
+async function configureChannelHermes(channel: string, credentials: ChannelCredentials) {
+  const configPath = "~/.hermes/config.yaml";
+  const envPath = "~/.hermes/.env";
+  
+  const config = readYAML(configPath);
+  const env = readEnv(envPath);
+  
+  if (channel === "telegram") {
+    config.platforms = config.platforms || {};
+    config.platforms.telegram = {
+      enabled: true,
+      reply_to_mode: "first",
+      allowed_chats: credentials.allowedChatIds || []
+    };
+    env.TELEGRAM_BOT_TOKEN = credentials.botToken;
+  } else if (channel === "slack") {
+    config.platforms = config.platforms || {};
+    config.platforms.slack = {
+      enabled: true
+    };
+    env.SLACK_BOT_TOKEN = credentials.botToken;
+    env.SLACK_APP_TOKEN = credentials.appToken;
+    env.SLACK_SIGNING_SECRET = credentials.signingSecret;
+  } else if (channel === "discord") {
+    config.discord = {
+      require_mention: true,
+      auto_thread: true,
+      reactions: true,
+      free_response_channels: ""
+    };
+    env.DISCORD_BOT_TOKEN = credentials.botToken;
+  }
+  
+  writeYAML(configPath, config);
+  writeEnv(envPath, env);
+}
+```
+
+#### OpenClaw
+```typescript
+// OpenClaw uses CLI flags (non-interactive) OR config JSON
+// Prefer CLI with --use-env flag (keeps secrets out of config)
+async function configureChannelOpenClaw(channel: string, credentials: ChannelCredentials) {
+  // Option 1: Use CLI with env vars (RECOMMENDED)
+  const env = {
+    ...process.env,
+    ...(channel === "telegram" && { TELEGRAM_BOT_TOKEN: credentials.botToken }),
+    ...(channel === "discord" && { DISCORD_BOT_TOKEN: credentials.botToken }),
+    ...(channel === "slack" && {
+      SLACK_BOT_TOKEN: credentials.botToken,
+      SLACK_APP_TOKEN: credentials.appToken,
+      SLACK_SIGNING_SECRET: credentials.signingSecret
+    })
+  };
+  
+  // Install plugin first
+  await exec(`openclaw plugins install ${channel} --accept-capabilities`, { env });
+  
+  // Add channel with --use-env
+  await exec(`openclaw channels add --channel ${channel} --use-env`, { env });
+  
+  // Option 2: Write config JSON directly (tokens in file)
+  // (Not recommended, but possible if CLI approach fails)
+}
+```
+
+**Key Takeaways:**
+1. **ZeptoClaw:** Tokens MUST be in config file (no env injection)
+2. **Hermes:** Tokens in `.env`, config in YAML (two-file approach)
+3. **OpenClaw:** Prefer `--use-env` CLI flag (keeps secrets out of config file)
+
+---
+
+### Guardrail Verification
+
+**Host Node Version:**
+```bash
+$ node -v
+v16.16.0
+```
+
+✅ **PASS** - Host node unchanged (OpenClaw invoked via isolated Node 22 in `/Users/nikhil/workspace/flashlearn/spikes/openclaw-test`)
+
+---
+
+### Sources (VERIFIED)
+
+**ZeptoClaw:**
+- Interactive setup captured via `zeptoclaw channel setup <channel>` with dummy tokens
+- Config diff captured from `~/.zeptoclaw/config.json` before/after setup
+- Telegram, Discord, Slack, WhatsApp Cloud VERIFIED (live config capture)
+
+**Hermes:**
+- Config structure verified from `~/.hermes/config.yaml` + prior doc examples
+- Env var pattern VERIFIED from prior doc + help output
+- Telegram, Discord, Slack VERIFIED (config structure + env vars)
+
+**OpenClaw:**
+- CLI flags VERIFIED from `openclaw channels add --channel <name> --help` (Node 22)
+- Config JSON structure VERIFIED by live channel addition + config diff
+- Telegram, Discord, Slack, Signal VERIFIED (flags + config capture)
+
+**Status:** COMPLETE - Write-format captured for telegram/slack/discord + whatsapp_cloud/signal per framework
+
+---
+
 **Verified By:** AgentOne Redesign Phase 2 Channel Research  
 **Date:** 2026-09-02  
 **Status:** COMPLETE
