@@ -597,18 +597,41 @@ export class ZeptoclawAdapter implements FrameworkAdapter {
       config.channels = {};
     }
 
-    // Extract token from secrets (botToken is the standard field name per research)
-    const token = spec.secrets.botToken || spec.secrets.token;
-    if (!token) {
-      throw new Error(`Channel ${spec.id} requires a botToken or token in secrets`);
-    }
+    // Task 2 (Slice 2c): Slack uses bot_token + app_token (socket mode), NOT signing_secret
+    if (spec.id === "slack") {
+      const channelConfig: Record<string, any> = {
+        enabled: true,
+      };
 
-    // Build channel config per verified ZeptoClaw format
-    config.channels[spec.id] = {
-      enabled: true,
-      token,  // DOCUMENTED EXCEPTION: token stored in plaintext in config file
-      ...spec.config,  // Merge any additional non-secret config
-    };
+      // Add bot_token if provided
+      if (spec.secrets.botToken) {
+        channelConfig.bot_token = spec.secrets.botToken;
+      }
+
+      // Add app_token if provided
+      if (spec.secrets.appToken) {
+        channelConfig.app_token = spec.secrets.appToken;
+      }
+
+      // Merge any additional non-secret config
+      config.channels[spec.id] = {
+        ...channelConfig,
+        ...spec.config,
+      };
+    } else {
+      // Generic path: single token for all other channels (telegram, discord, etc.)
+      const token = spec.secrets.botToken || spec.secrets.token;
+      if (!token) {
+        throw new Error(`Channel ${spec.id} requires a botToken or token in secrets`);
+      }
+
+      // Build channel config per verified ZeptoClaw format
+      config.channels[spec.id] = {
+        enabled: true,
+        token,  // DOCUMENTED EXCEPTION: token stored in plaintext in config file
+        ...spec.config,  // Merge any additional non-secret config
+      };
+    }
 
     // Write config file (JSON.stringify safely escapes the token - no injection)
     await fs.writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
