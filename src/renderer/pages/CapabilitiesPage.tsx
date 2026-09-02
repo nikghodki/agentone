@@ -65,34 +65,34 @@ export function CapabilitiesPage() {
   };
 
   return (
-    <div className="flex flex-col h-screen">
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-zinc-800">
+    <div className="flex flex-col h-screen bg-slate-50">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-200">
         <button
           onClick={() => setView("settings")}
-          className="text-zinc-400 hover:text-zinc-200 transition-colors"
+          className="text-slate-600 hover:text-slate-900 transition-colors"
         >
           ← Back
         </button>
-        <h2 className="text-lg font-medium">Manage Capabilities</h2>
+        <h2 className="text-lg font-medium text-slate-900">Manage Capabilities</h2>
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 max-w-3xl mx-auto w-full">
         {loading && (
-          <div className="text-zinc-400 text-center py-8">Loading...</div>
+          <div className="text-slate-500 text-center py-8">Loading...</div>
         )}
 
         {error && (
-          <div className="text-red-400 text-center py-8">{error}</div>
+          <div className="text-rose-600 text-center py-8">{error}</div>
         )}
 
         {!loading && !error && capabilities.length === 0 && (
-          <div className="text-zinc-400 text-center py-8">
+          <div className="text-slate-500 text-center py-8">
             No capabilities installed yet.
           </div>
         )}
 
         {note && (
-          <div className="mb-6 p-4 bg-yellow-900/20 border border-yellow-700/30 rounded-lg text-yellow-200 text-sm">
+          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-sm">
             {note}
           </div>
         )}
@@ -102,20 +102,20 @@ export function CapabilitiesPage() {
             {/* Skills */}
             {grouped.skill.length > 0 && (
               <section>
-                <h3 className="text-sm font-medium text-zinc-400 mb-3">Skills</h3>
+                <h3 className="text-sm font-medium text-slate-600 mb-3">Skills</h3>
                 <div className="space-y-2">
                   {grouped.skill.map((cap) => (
                     <div
                       key={`${cap.type}-${cap.name}`}
-                      className="bg-zinc-900 rounded-lg p-4 border border-zinc-800 flex items-start justify-between"
+                      className="bg-white rounded-lg p-4 border border-slate-200 flex items-start justify-between shadow-sm"
                     >
                       <div className="flex-1">
-                        <div className="text-zinc-200 font-medium">{cap.name}</div>
-                        <div className="text-xs text-zinc-500 mt-1">{cap.source}</div>
+                        <div className="text-slate-900 font-medium">{cap.name}</div>
+                        <div className="text-xs text-slate-500 mt-1">{cap.source}</div>
                       </div>
                       <button
                         onClick={() => handleRemove(cap)}
-                        className="ml-4 px-3 py-1 bg-red-600/80 hover:bg-red-600 text-white text-sm rounded transition-colors"
+                        className="ml-4 px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white text-sm rounded transition-colors"
                       >
                         Remove
                       </button>
@@ -128,20 +128,20 @@ export function CapabilitiesPage() {
             {/* MCP Servers */}
             {grouped.mcp.length > 0 && (
               <section>
-                <h3 className="text-sm font-medium text-zinc-400 mb-3">MCP Servers</h3>
+                <h3 className="text-sm font-medium text-slate-600 mb-3">MCP Servers</h3>
                 <div className="space-y-2">
                   {grouped.mcp.map((cap) => (
                     <div
                       key={`${cap.type}-${cap.name}`}
-                      className="bg-zinc-900 rounded-lg p-4 border border-zinc-800 flex items-start justify-between"
+                      className="bg-white rounded-lg p-4 border border-slate-200 flex items-start justify-between shadow-sm"
                     >
                       <div className="flex-1">
-                        <div className="text-zinc-200 font-medium">{cap.name}</div>
-                        <div className="text-xs text-zinc-500 mt-1">{cap.source}</div>
+                        <div className="text-slate-900 font-medium">{cap.name}</div>
+                        <div className="text-xs text-slate-500 mt-1">{cap.source}</div>
                       </div>
                       <button
                         onClick={() => handleRemove(cap)}
-                        className="ml-4 px-3 py-1 bg-red-600/80 hover:bg-red-600 text-white text-sm rounded transition-colors"
+                        className="ml-4 px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white text-sm rounded transition-colors"
                       >
                         Remove
                       </button>
@@ -154,20 +154,20 @@ export function CapabilitiesPage() {
             {/* Plugins */}
             {grouped.plugin.length > 0 && (
               <section>
-                <h3 className="text-sm font-medium text-zinc-400 mb-3">Plugins</h3>
+                <h3 className="text-sm font-medium text-slate-600 mb-3">Plugins</h3>
                 <div className="space-y-2">
                   {grouped.plugin.map((cap) => (
                     <div
                       key={`${cap.type}-${cap.name}`}
-                      className="bg-zinc-900 rounded-lg p-4 border border-zinc-800 flex items-start justify-between"
+                      className="bg-white rounded-lg p-4 border border-slate-200 flex items-start justify-between shadow-sm"
                     >
                       <div className="flex-1">
-                        <div className="text-zinc-200 font-medium">{cap.name}</div>
-                        <div className="text-xs text-zinc-500 mt-1">{cap.source}</div>
+                        <div className="text-slate-900 font-medium">{cap.name}</div>
+                        <div className="text-xs text-slate-500 mt-1">{cap.source}</div>
                       </div>
                       <button
                         onClick={() => handleRemove(cap)}
-                        className="ml-4 px-3 py-1 bg-red-600/80 hover:bg-red-600 text-white text-sm rounded transition-colors"
+                        className="ml-4 px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white text-sm rounded transition-colors"
                       >
                         Remove
                       </button>
