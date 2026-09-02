@@ -352,6 +352,18 @@ export class Database {
       .run(deploymentId, type, name);
   }
 
+  deleteDeployment(id: string): void {
+    // Delete all capabilities for this deployment first
+    this.db
+      .prepare("DELETE FROM capabilities WHERE deployment_id = ?")
+      .run(id);
+
+    // Delete the deployment itself
+    this.db
+      .prepare("DELETE FROM deployments WHERE id = ?")
+      .run(id);
+  }
+
   close(): void {
     this.db.close();
   }

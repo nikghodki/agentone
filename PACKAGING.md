@@ -20,17 +20,30 @@ for public distribution is a follow-up (see below).
 # Run under Node 22 (host Node is pinned to 16 for source/tests).
 export PATH="/path/to/node-v22/bin:$PATH"     # or `nvm use 22`
 export CSC_IDENTITY_AUTO_DISCOVERY=false        # unsigned: don't pick up a cert
+unset ELECTRON_RUN_AS_NODE                      # see caveat below — this MUST be unset
 
-npm run build                                   # compiles renderer + main + preload → dist/
+npm run build                                   # clean + compile renderer + main + preload → dist/
+npm run rebuild:electron                        # better-sqlite3 → Electron's ABI (see below)
 
 # Unpacked .app (fast pipeline check):
 npx electron-builder --dir --mac --arm64        # → release/mac-arm64/AgentOne.app
 
 # Full .dmg installer:
 npx electron-builder --mac --arm64              # → release/AgentOne-<version>-arm64.dmg
+
+# arm64 requires a valid signature to run — ad-hoc sign the bundle:
+codesign --force --deep --sign - release/mac-arm64/AgentOne.app
+open release/mac-arm64/AgentOne.app
 ```
 
 Artifacts land in `release/`.
+
+### Why the extra steps (each is load-bearing)
+
+- **`npm run rebuild:electron`** — electron-builder's own native rebuild pulls a *prebuilt* better-sqlite3 for the host Node ABI (v93 / Node 16), which crashes the packaged app at import (Electron needs `NODE_MODULE_VERSION 113`). So `electron-builder.yml` sets `npmRebuild: false` and we compile better-sqlite3 from source against Electron's headers via `rebuild:electron` first, then package it as-is. (If the Electron version changes, update the `--target` in that script.)
+- **`codesign --force --deep --sign -`** — on Apple Silicon the kernel rejects a bundle whose signature doesn't seal its resources. `identity: null` skips signing and leaves the Electron binary's ad-hoc sig (which doesn't cover the app), so the app is killed on launch. Re-sign ad-hoc to seal the whole bundle. (`codesign --verify` should then pass.)
+- **`unset ELECTRON_RUN_AS_NODE`** — if this env var is set (some ABI/debug commands set it), Electron runs as plain Node with **no GUI** — the app launches and exits immediately with no window. `open` inherits the caller's environment, so it must be unset in your shell too.
+- **Ollama is not bundled.** The app uses a system Ollama install (`/opt/homebrew/bin/ollama`, `/usr/local/bin/ollama`, or PATH) via `resolveOllamaBinary()` in `src/main/paths.ts`. Install Ollama separately, or bundling it is a follow-up.
 
 ## What the build does
 

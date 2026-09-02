@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useAppStore } from "../store";
+import { Button } from "../components/ui/Button";
 
 export function TaskPage() {
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [showSwitchConfirm, setShowSwitchConfirm] = useState(false);
   const currentDeploymentId = useAppStore((s) => s.currentDeploymentId);
   const taskStreamText = useAppStore((s) => s.taskStreamText);
   const taskStatus = useAppStore((s) => s.taskStatus);
@@ -11,6 +13,9 @@ export function TaskPage() {
   const clearTaskStreamText = useAppStore((s) => s.clearTaskStreamText);
   const setTaskStatus = useAppStore((s) => s.setTaskStatus);
   const clearTaskStatus = useAppStore((s) => s.clearTaskStatus);
+  const resetWizard = useAppStore((s) => s.resetWizard);
+  const setView = useAppStore((s) => s.setView);
+  const setCurrentDeploymentId = useAppStore((s) => s.setCurrentDeploymentId);
 
   const unsubTokenRef = useRef<(() => void) | null>(null);
   const unsubStatusRef = useRef<(() => void) | null>(null);
@@ -72,18 +77,72 @@ export function TaskPage() {
     }
   };
 
+  const handleSwitchFramework = async () => {
+    if (!currentDeploymentId) return;
+
+    try {
+      await window.electronAPI.removeDeployment(currentDeploymentId);
+      setCurrentDeploymentId(null);
+      resetWizard();
+      setView("wizard");
+      setShowSwitchConfirm(false);
+    } catch (err) {
+      console.error("Failed to remove deployment:", err);
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen bg-zinc-950">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-zinc-800">
         <h1 className="text-xl font-semibold text-white">Task Runner</h1>
-        <button
-          onClick={() => useAppStore.getState().setView("dashboard")}
-          className="px-4 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
-        >
-          Back to Dashboard
-        </button>
+        <div className="flex gap-2">
+          <Button
+            variant="ghost"
+            onClick={() => setShowSwitchConfirm(true)}
+            disabled={!currentDeploymentId}
+            className="text-sm"
+          >
+            Switch framework
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => useAppStore.getState().setView("dashboard")}
+            className="text-sm"
+          >
+            Back to Dashboard
+          </Button>
+        </div>
       </div>
+
+      {/* Switch Framework Confirmation Modal */}
+      {showSwitchConfirm && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md border border-slate-200">
+            <h2 className="text-lg font-semibold text-slate-900 mb-3">Switch framework?</h2>
+            <p className="text-slate-600 mb-6">
+              This will tear down the current deployment and restart the setup wizard.
+              Any unsaved work will be lost.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button
+                variant="secondary"
+                onClick={() => setShowSwitchConfirm(false)}
+                className="text-sm"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={handleSwitchFramework}
+                className="text-sm"
+              >
+                Switch framework
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Status Banner */}
       {taskStatus && (

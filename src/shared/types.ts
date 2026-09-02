@@ -133,6 +133,7 @@ export interface ElectronAPI {
     deploymentId: string,
     spec: { type: string; name: string }
   ) => Promise<{ frameworkRemoved: boolean; note?: string }>;
+  removeDeployment: (deploymentId: string) => Promise<void>;
 }
 
 declare global {

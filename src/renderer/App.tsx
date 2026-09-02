@@ -9,6 +9,7 @@ import { FrameworkSelectPage } from "./pages/FrameworkSelectPage";
 import { ModelBackendPage } from "./pages/ModelBackendPage";
 import { TaskPage } from "./pages/TaskPage";
 import { CapabilitiesPage } from "./pages/CapabilitiesPage";
+import { Wizard } from "./pages/wizard/Wizard";
 
 function Placeholder({ name }: { name: string }) {
   return (
@@ -35,6 +36,8 @@ export function App() {
       return <ChatPage />;
     case "settings":
       return <SettingsPage />;
+    case "wizard":
+      return <Wizard />;
     case "v2-framework-select":
       return <FrameworkSelectPage />;
     case "v2-model-backend":
