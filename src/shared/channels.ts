@@ -2,6 +2,7 @@ export interface ChannelField {
   key: string;
   label: string;
   secret?: boolean;
+  optional?: boolean;
   help?: string;
   placeholder?: string;
 }
@@ -45,21 +46,22 @@ export const CHANNELS: ChannelDef[] = [
         placeholder: "xoxb-..."
       },
       {
-        key: "signingSecret",
-        label: "Signing Secret",
-        secret: true,
-        help: "Found in your Slack app's Basic Information section",
-        placeholder: "abc123..."
-      },
-      {
         key: "appToken",
         label: "App Token",
         secret: true,
-        help: "App-level token for Socket Mode (optional for some setups)",
+        help: "App-level token for Socket Mode",
         placeholder: "xapp-..."
+      },
+      {
+        key: "signingSecret",
+        label: "Signing Secret",
+        secret: true,
+        optional: true,
+        help: "For hermes/openclaw HTTP mode; zeptoclaw doesn't use it",
+        placeholder: "abc123..."
       }
     ],
-    frameworks: [], // per-framework config mapping deferred to Slice 2c
+    frameworks: ["openclaw", "zeptoclaw", "hermes"],
     instructions: "Create a Slack app at api.slack.com/apps. Enable Socket Mode and generate an app-level token. Install the app to your workspace and copy the bot token from OAuth & Permissions. Get the signing secret from Basic Information."
   },
   {
@@ -75,7 +77,7 @@ export const CHANNELS: ChannelDef[] = [
         placeholder: "Your bot token"
       }
     ],
-    frameworks: [], // per-framework config mapping deferred to Slice 2c
+    frameworks: ["openclaw", "zeptoclaw", "hermes"],
     instructions: "Go to Discord Developer Portal (discord.com/developers/applications). Create a new application, navigate to the Bot section, and create a bot. Copy the bot token. Enable necessary intents (Message Content, Server Members, etc.)."
   },
   {
@@ -107,5 +109,13 @@ export const CHANNELS: ChannelDef[] = [
     ],
     frameworks: [], // per-framework config mapping deferred to Slice 2c
     instructions: "Set up WhatsApp Business API through Meta Business. Create a business account, add a phone number, and generate an access token. Configure webhook with a verify token. Note: Requires a public HTTPS webhook endpoint."
+  },
+  {
+    id: "whatsapp_web",
+    name: "WhatsApp Web",
+    kind: "qr",
+    fields: [],
+    frameworks: ["openclaw", "zeptoclaw", "hermes"],
+    instructions: "Pair your WhatsApp account by scanning a QR code. The framework will display a QR code that you scan with your phone's WhatsApp app (Settings > Linked Devices > Link a Device). No credentials required - pairing is interactive."
   }
 ];
