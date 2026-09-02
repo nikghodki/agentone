@@ -18,7 +18,7 @@ beforeEach(() => {
 });
 
 describe("ChannelSetupForm", () => {
-  it("filters channels by frameworkId: openclaw shows telegram, not slack/discord", async () => {
+  it("filters channels by frameworkId: openclaw shows telegram/slack/discord (all have openclaw after 2c)", async () => {
     const { ChannelSetupForm } = await import("../../src/renderer/components/ChannelSetupForm");
 
     render(
@@ -28,12 +28,14 @@ describe("ChannelSetupForm", () => {
       />
     );
 
-    // Should show telegram (has openclaw in frameworks)
+    // Should show telegram, slack, discord (all have openclaw in frameworks after 2c)
     expect(screen.getByText("Telegram")).toBeTruthy();
+    expect(screen.getByText("Slack")).toBeTruthy();
+    expect(screen.getByText("Discord")).toBeTruthy();
+    expect(screen.getByText("WhatsApp Web")).toBeTruthy();
 
-    // Should NOT show Slack or Discord (frameworks:[])
-    expect(screen.queryByText("Slack")).toBeFalsy();
-    expect(screen.queryByText("Discord")).toBeFalsy();
+    // Should NOT show WhatsApp Cloud (frameworks still empty)
+    expect(screen.queryByText("WhatsApp Cloud")).toBeFalsy();
   });
 
   it("picking telegram shows botToken masked field + instructions", async () => {
