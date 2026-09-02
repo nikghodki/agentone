@@ -22,6 +22,8 @@ function getStepProgressKey(wizardStep: WizardStep): string {
       return "model";
     case "deploy":
       return "deploy";
+    case "channel":
+      return "deploy";
     default:
       return "framework";
   }

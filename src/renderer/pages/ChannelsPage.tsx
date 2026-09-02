@@ -150,11 +150,13 @@ export function ChannelsPage() {
                     Cancel
                   </button>
                 </div>
-                <ChannelSetupForm
-                  deploymentId={currentDeploymentId!}
-                  frameworkId={selectedFrameworkId}
-                  onConnected={handleChannelConnected}
-                />
+                <div className="bg-white rounded-2xl p-6">
+                  <ChannelSetupForm
+                    deploymentId={currentDeploymentId!}
+                    frameworkId={selectedFrameworkId}
+                    onConnected={handleChannelConnected}
+                  />
+                </div>
               </div>
             )}
           </div>
