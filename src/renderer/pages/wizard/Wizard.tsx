@@ -1,6 +1,8 @@
 import React from "react";
 import { useAppStore, WizardStep } from "../../store";
 import { WizardLayout } from "../../components/WizardLayout";
+import { FrameworkStep } from "./FrameworkStep";
+import { ConfigStep } from "./ConfigStep";
 
 // Map wizard steps to the 4 visible groups in StepProgress
 function getStepProgressKey(wizardStep: WizardStep): string {
@@ -62,6 +64,7 @@ function getPreviousStep(current: WizardStep): WizardStep | null {
 
 export function Wizard() {
   const wizardStep = useAppStore((s) => s.wizardStep);
+  const selectedFrameworkId = useAppStore((s) => s.selectedFrameworkId);
   const setWizardStep = useAppStore((s) => s.setWizardStep);
 
   const handleBack = () => {
@@ -81,21 +84,46 @@ export function Wizard() {
   const canGoBack = getPreviousStep(wizardStep) !== null;
   const stepProgressKey = getStepProgressKey(wizardStep);
 
-  // Placeholder content for each step (Tasks 4-7 will implement the real steps)
+  // Determine if current step is ready to continue
+  const canContinue = (() => {
+    switch (wizardStep) {
+      case "framework":
+        return selectedFrameworkId !== null && selectedFrameworkId !== "";
+      case "config":
+        return true; // Config step is always ready (no required fields)
+      default:
+        return true; // Other steps will implement their own readiness logic
+    }
+  })();
+
+  // Render the appropriate step component
+  const renderStep = () => {
+    switch (wizardStep) {
+      case "framework":
+        return <FrameworkStep />;
+      case "config":
+        return <ConfigStep />;
+      default:
+        return (
+          <div className="text-slate-700">
+            <p>Current wizard step: <strong>{wizardStep}</strong></p>
+            <p className="text-sm text-slate-500 mt-2">
+              Placeholder — will be implemented in Tasks 5-7
+            </p>
+          </div>
+        );
+    }
+  };
+
   return (
     <WizardLayout
       current={stepProgressKey}
       title={`Step: ${wizardStep}`}
-      canContinue={true} // Enable for placeholder testing
+      canContinue={canContinue}
       onBack={canGoBack ? handleBack : undefined}
       onContinue={handleContinue}
     >
-      <div className="text-slate-700">
-        <p>Current wizard step: <strong>{wizardStep}</strong></p>
-        <p className="text-sm text-slate-500 mt-2">
-          Placeholder — real step UI will be implemented in Tasks 4-7
-        </p>
-      </div>
+      {renderStep()}
     </WizardLayout>
   );
 }
