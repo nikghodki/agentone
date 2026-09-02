@@ -88,7 +88,7 @@ describe("UseCaseStep", () => {
 });
 
 describe("UseCasesPage", () => {
-  it("renders UseCaseBuilder in a light container", async () => {
+  it("renders UseCaseBuilder on light background", async () => {
     useAppStore.setState({ view: "use-cases" });
 
     const { UseCasesPage } = await import("../../src/renderer/pages/UseCasesPage");
@@ -98,9 +98,9 @@ describe("UseCasesPage", () => {
     // Should show use case selection UI heading
     expect(screen.getByRole("heading", { level: 3, name: "Choose a use case" })).toBeTruthy();
 
-    // Should have a light container (bg-white)
-    const lightContainer = container.querySelector(".bg-white");
-    expect(lightContainer).toBeTruthy();
+    // Should have light page background (bg-slate-50)
+    const pageContainer = container.querySelector(".bg-slate-50");
+    expect(pageContainer).toBeTruthy();
   });
 });
 
