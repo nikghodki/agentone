@@ -9,6 +9,7 @@
     "dev:preload": "tsc -p tsconfig.preload.json --watch",
     "dev": "concurrently \"npm run dev:renderer\" \"npm run dev:main\" \"npm run dev:preload\" \"wait-on http://localhost:5173 && electron .\"",
     "clean": "rm -rf dist",
+    "icon": "bash scripts/generate-icon.sh",
     "rebuild:electron": "cd node_modules/better-sqlite3 && node-gyp rebuild --target=23.3.13 --arch=arm64 --dist-url=https://electronjs.org/headers",
     "build:renderer": "vite build --config vite.config.ts",
     "build:main": "tsc -p tsconfig.main.json",

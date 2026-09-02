@@ -28,6 +28,7 @@ asarUnpack:
 
 mac:
   category: public.app-category.productivity
+  icon: build/icon.icns
   # Unsigned local build (no Apple Developer cert). Signing/notarization + a
   # hardened runtime are a later step for public distribution.
   identity: null
