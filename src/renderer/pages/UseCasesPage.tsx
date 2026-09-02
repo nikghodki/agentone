@@ -6,7 +6,7 @@ export function UseCasesPage() {
   const setView = useAppStore((s) => s.setView);
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-screen bg-zinc-950">
       <div className="flex items-center gap-3 px-6 py-4 border-b border-zinc-800">
         <button
           onClick={() => setView("task")}
@@ -14,7 +14,7 @@ export function UseCasesPage() {
         >
           ← Back
         </button>
-        <h2 className="text-lg font-medium">Get Started</h2>
+        <h2 className="text-lg font-medium text-white">Get Started</h2>
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 max-w-5xl mx-auto w-full">
