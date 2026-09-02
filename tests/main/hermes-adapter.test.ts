@@ -1085,6 +1085,41 @@ Available skills:
       expect(envContent).toContain("SLACK_APP_TOKEN=xapp-slack-app");
       expect(envContent).toContain("SLACK_SIGNING_SECRET=slack-signing-secret");
     });
+
+    it("rejects secret values containing newlines (prevent env injection)", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new HermesAdapter(tempDir, mockProbe);
+
+      // Test \n injection attempt
+      await expect(
+        adapter.configureChannel({
+          id: "telegram",
+          config: {},
+          secrets: { botToken: "valid-token\nMALICIOUS_KEY=evil" },
+        })
+      ).rejects.toThrow(/must not contain newlines/);
+
+      // Test \r injection attempt
+      await expect(
+        adapter.configureChannel({
+          id: "telegram",
+          config: {},
+          secrets: { botToken: "valid-token\rMALICIOUS_KEY=evil" },
+        })
+      ).rejects.toThrow(/must not contain newlines/);
+
+      // Verify .env was not written/corrupted
+      const envPath = path.join(tempDir, ".env");
+      try {
+        await fs.readFile(envPath, "utf-8");
+        // If file exists, it should not contain the malicious content
+        const envContent = await fs.readFile(envPath, "utf-8");
+        expect(envContent).not.toContain("MALICIOUS_KEY");
+      } catch (error: any) {
+        // File doesn't exist is also acceptable (rejected before write)
+        expect(error.code).toBe("ENOENT");
+      }
+    });
   });
 
   describe("verifyChannel()", () => {

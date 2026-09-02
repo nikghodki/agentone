@@ -727,8 +727,18 @@ export class HermesAdapter implements FrameworkAdapter {
     }
 
     // Add new secrets (map field names to env var names)
+    // SECURITY: Validate each secret value before writing to prevent .env injection
     for (const [field, value] of Object.entries(secrets)) {
       const envVarName = this.getChannelEnvVarName(channelId, field);
+
+      // Reject secret values containing newlines (prevent env injection)
+      if (value.includes("\n") || value.includes("\r")) {
+        throw new Error(
+          `Channel secret for ${envVarName} must not contain newlines. ` +
+          `Bot tokens, signing secrets, and app tokens never legitimately contain newlines.`
+        );
+      }
+
       existingEnv[envVarName] = value;
     }
 
