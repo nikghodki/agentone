@@ -1,7 +1,7 @@
 # AgentOne Redesign — Phase 3: Use-Case Prompt Generator (Design Spec)
 
 **Date:** 2026-09-02
-**Status:** Draft for review
+**Status:** DELIVERED (2026-09-02)
 **Implements:** original step 9 — once an agent is set up, show ~10 use cases it can help with; selecting one helps craft a copy-paste prompt the user sends to the agent via their messaging channel.
 **Builds on:** Phase 1 wizard + UI kit; Phase 2 channels.
 
