@@ -38,8 +38,8 @@ const api: ElectronAPI = {
   getLicenseStatus: () => ipcRenderer.invoke("get-license-status"),
   activateLicense: (key) => ipcRenderer.invoke("activate-license", key),
 
-  deployFramework: (frameworkId, modelBackendId) =>
-    ipcRenderer.invoke("deploy-framework", frameworkId, modelBackendId),
+  deployFramework: (frameworkId, modelBackendId, options) =>
+    ipcRenderer.invoke("deploy-framework", frameworkId, modelBackendId, options),
   sendTask: (deploymentId, input) =>
     ipcRenderer.invoke("send-task", deploymentId, input),
   getDeployments: () => ipcRenderer.invoke("get-deployments"),

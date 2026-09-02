@@ -373,6 +373,108 @@ export async function handleRemoveChannel(
   return result;
 }
 
+/**
+ * Handler for deploy-framework IPC call.
+ * Creates adapter, installs framework, configures with backend and optional advanced options,
+ * starts the framework, and registers the deployment.
+ */
+export async function handleDeployFramework(
+  db: Database,
+  secrets: Secrets,
+  frameworkId: string,
+  modelBackendId: string,
+  options?: import("../shared/v2-types").FrameworkDeployOptions,
+  createAdapterFn: (fwId: string, sec: Secrets) => FrameworkAdapter = createAdapter
+): Promise<Deployment> {
+  try {
+    // Create the adapter
+    const adapter = createAdapterFn(frameworkId, secrets);
+
+    // Resolve the model backend
+    let backend = db.getModelBackend(modelBackendId);
+    if (!backend) {
+      throw new Error(`Model backend "${modelBackendId}" not found in database`);
+    }
+
+    // Create deployment record (pending status)
+    const deployment = db.createDeployment({
+      frameworkId,
+      location: "local",
+      remoteUrl: null,
+      modelBackendId,
+    });
+
+    try {
+      // If using llama.cpp, start the managed server first
+      if (backend.kind === "llamacpp") {
+        llamaCppManager = createLlamaCppManager(getLlamaCppInstallDir());
+        const win = BrowserWindow.getAllWindows()[0];
+        backend = await startLlamaCppForBackend(
+          backend,
+          llamaCppManager,
+          (pct) => {
+            if (win) win.webContents.send("model-download-progress", pct);
+          }
+        );
+      }
+
+      // Run install → configure → start
+      await adapter.install();
+      await adapter.configure(backend, options);
+      await adapter.start();
+
+      // Poll status until healthy using consolidated readiness check
+      // This now incorporates process liveness (Fix 2)
+      const processManager = (adapter as any).processManager;
+      if (processManager && processManager.waitUntilReady) {
+        // Use ProcessManager's waitUntilReady for consistent polling
+        await processManager.waitUntilReady(
+          async () => {
+            const status = await adapter.status();
+            return status === "healthy";
+          },
+          { timeoutMs: 10000, intervalMs: 500 }
+        );
+      } else {
+        // Fallback for adapters without ProcessManager
+        const timeoutMs = 10000;
+        const startTime = Date.now();
+        while (Date.now() - startTime < timeoutMs) {
+          const status = await adapter.status();
+          if (status === "healthy") {
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+        // Final status check
+        const finalStatus = await adapter.status();
+        if (finalStatus !== "healthy") {
+          throw new Error(`Adapter failed to reach healthy status: ${finalStatus}`);
+        }
+      }
+
+      // Create orchestrator
+      const orchestrator = new CapabilityOrchestrator(adapter, db, deployment.id);
+
+      // Update deployment status to ready
+      db.updateDeploymentStatus(deployment.id, "ready");
+
+      // Register in deployment registry (only after successful deploy)
+      deploymentRegistry.set(deployment.id, { adapter, orchestrator });
+
+      return { ...deployment, status: "ready" };
+    } catch (error) {
+      // Clean up any started process (prevent zombie)
+      await adapter.stop().catch(() => {});
+      // Mark deployment as failed
+      db.updateDeploymentStatus(deployment.id, "failed");
+      throw error;
+    }
+  } catch (error) {
+    throw new Error(`Failed to deploy framework: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 export function registerIpcHandlers(db: Database, rateLimiter: RateLimiter, secrets: Secrets) {
   const paths = getAppPaths();
 
@@ -469,94 +571,8 @@ export function registerIpcHandlers(db: Database, rateLimiter: RateLimiter, secr
     return true;
   });
 
-  ipcMain.handle("deploy-framework", async (_e, frameworkId: string, modelBackendId: string): Promise<Deployment> => {
-    try {
-      // Create the adapter
-      const adapter = createAdapter(frameworkId, secrets);
-
-      // Resolve the model backend
-      let backend = db.getModelBackend(modelBackendId);
-      if (!backend) {
-        throw new Error(`Model backend "${modelBackendId}" not found in database`);
-      }
-
-      // Create deployment record (pending status)
-      const deployment = db.createDeployment({
-        frameworkId,
-        location: "local",
-        remoteUrl: null,
-        modelBackendId,
-      });
-
-      try {
-        // If using llama.cpp, start the managed server first
-        if (backend.kind === "llamacpp") {
-          llamaCppManager = createLlamaCppManager(getLlamaCppInstallDir());
-          const win = BrowserWindow.getAllWindows()[0];
-          backend = await startLlamaCppForBackend(
-            backend,
-            llamaCppManager,
-            (pct) => {
-              if (win) win.webContents.send("model-download-progress", pct);
-            }
-          );
-        }
-
-        // Run install → configure → start
-        await adapter.install();
-        await adapter.configure(backend);
-        await adapter.start();
-
-        // Poll status until healthy using consolidated readiness check
-        // This now incorporates process liveness (Fix 2)
-        const processManager = (adapter as any).processManager;
-        if (processManager && processManager.waitUntilReady) {
-          // Use ProcessManager's waitUntilReady for consistent polling
-          await processManager.waitUntilReady(
-            async () => {
-              const status = await adapter.status();
-              return status === "healthy";
-            },
-            { timeoutMs: 10000, intervalMs: 500 }
-          );
-        } else {
-          // Fallback for adapters without ProcessManager
-          const timeoutMs = 10000;
-          const startTime = Date.now();
-          while (Date.now() - startTime < timeoutMs) {
-            const status = await adapter.status();
-            if (status === "healthy") {
-              break;
-            }
-            await new Promise((resolve) => setTimeout(resolve, 500));
-          }
-          // Final status check
-          const finalStatus = await adapter.status();
-          if (finalStatus !== "healthy") {
-            throw new Error(`Adapter failed to reach healthy status: ${finalStatus}`);
-          }
-        }
-
-        // Create orchestrator
-        const orchestrator = new CapabilityOrchestrator(adapter, db, deployment.id);
-
-        // Update deployment status to ready
-        db.updateDeploymentStatus(deployment.id, "ready");
-
-        // Register in deployment registry (only after successful deploy)
-        deploymentRegistry.set(deployment.id, { adapter, orchestrator });
-
-        return { ...deployment, status: "ready" };
-      } catch (error) {
-        // Clean up any started process (prevent zombie)
-        await adapter.stop().catch(() => {});
-        // Mark deployment as failed
-        db.updateDeploymentStatus(deployment.id, "failed");
-        throw error;
-      }
-    } catch (error) {
-      throw new Error(`Failed to deploy framework: ${error instanceof Error ? error.message : String(error)}`);
-    }
+  ipcMain.handle("deploy-framework", async (_e, frameworkId: string, modelBackendId: string, options?: import("../shared/v2-types").FrameworkDeployOptions): Promise<Deployment> => {
+    return handleDeployFramework(db, secrets, frameworkId, modelBackendId, options);
   });
 
   ipcMain.handle("send-task", async (_e, deploymentId: string, input: string): Promise<string> => {
