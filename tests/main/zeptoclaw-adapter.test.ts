@@ -899,4 +899,247 @@ describe("ZeptoclawAdapter", () => {
       expect(chunks[chunks.length - 1]).toBe("__TASK_DONE__");
     });
   });
+
+  describe("channel methods (Phase 2a Task 4)", () => {
+    it("configureChannel() deep-merges channel config and preserves existing keys", async () => {
+      // Create existing config with model/provider settings
+      const existingConfig = {
+        agents: { defaults: { model: "llama3.2:3b" } },
+        providers: { ollama: { api_base: "http://localhost:11434/v1", model: "llama3.2:3b" } }
+      };
+      await fs.writeFile(configPath, JSON.stringify(existingConfig, null, 2), "utf-8");
+
+      const mockExecWithArgs = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(
+        tempDir,
+        mockProbe,
+        null as any,
+        null as any,
+        null as any,
+        mockExecWithArgs
+      );
+
+      // Configure telegram channel
+      await adapter.configureChannel!({
+        id: "telegram",
+        config: {},
+        secrets: { botToken: "test-token-12345" }
+      });
+
+      // Read back the config
+      const configContent = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+
+      // Verify channel was added
+      expect(config.channels).toBeDefined();
+      expect(config.channels.telegram).toBeDefined();
+      expect(config.channels.telegram.enabled).toBe(true);
+      expect(config.channels.telegram.token).toBe("test-token-12345");
+
+      // Verify existing keys were preserved
+      expect(config.agents.defaults.model).toBe("llama3.2:3b");
+      expect(config.providers.ollama.api_base).toBe("http://localhost:11434/v1");
+    });
+
+    it("configureChannel() sets file mode 600 for security (token in plaintext)", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(
+        tempDir,
+        mockProbe,
+        null as any,
+        null as any,
+        null as any,
+        mockExecWithArgs
+      );
+
+      await adapter.configureChannel!({
+        id: "telegram",
+        config: {},
+        secrets: { botToken: "test-token-12345" }
+      });
+
+      // Verify file mode is 600
+      const stats = await fs.stat(configPath);
+      const mode = stats.mode & 0o777;
+      expect(mode).toBe(0o600);
+    });
+
+    it("configureChannel() writes token to config (documented exception) but never logs it", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const mockConsoleLog = vi.spyOn(console, "log");
+      const mockConsoleError = vi.spyOn(console, "error");
+      const mockConsoleWarn = vi.spyOn(console, "warn");
+
+      adapter = new ZeptoclawAdapter(
+        tempDir,
+        mockProbe,
+        null as any,
+        null as any,
+        null as any,
+        mockExecWithArgs
+      );
+
+      await adapter.configureChannel!({
+        id: "telegram",
+        config: {},
+        secrets: { botToken: "SECRET-TOKEN-DO-NOT-LOG" }
+      });
+
+      // Token should be in file (documented exception)
+      const configContent = await fs.readFile(configPath, "utf-8");
+      expect(configContent).toContain("SECRET-TOKEN-DO-NOT-LOG");
+
+      // Token should NEVER appear in logs
+      expect(mockConsoleLog.mock.calls.join("\n")).not.toContain("SECRET-TOKEN-DO-NOT-LOG");
+      expect(mockConsoleError.mock.calls.join("\n")).not.toContain("SECRET-TOKEN-DO-NOT-LOG");
+      expect(mockConsoleWarn.mock.calls.join("\n")).not.toContain("SECRET-TOKEN-DO-NOT-LOG");
+
+      mockConsoleLog.mockRestore();
+      mockConsoleError.mockRestore();
+      mockConsoleWarn.mockRestore();
+    });
+
+    it("verifyChannel() parses channel test output for connected state", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: "telegram: connected\nBot @mybot is active",
+        stderr: ""
+      });
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(
+        tempDir,
+        mockProbe,
+        null as any,
+        null as any,
+        null as any,
+        mockExecWithArgs
+      );
+
+      const result = await adapter.verifyChannel!("telegram");
+
+      expect(mockExecWithArgs).toHaveBeenCalledWith("zeptoclaw", ["channel", "test", "telegram"]);
+      expect(result.connected).toBe(true);
+      expect(result.detail).toContain("connected");
+    });
+
+    it("verifyChannel() returns connected false on failure without throwing", async () => {
+      const mockExecWithArgs = vi.fn().mockRejectedValue(new Error("Connection failed"));
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(
+        tempDir,
+        mockProbe,
+        null as any,
+        null as any,
+        null as any,
+        mockExecWithArgs
+      );
+
+      const result = await adapter.verifyChannel!("telegram");
+
+      expect(result.connected).toBe(false);
+      expect(result.detail).toContain("Connection failed");
+    });
+
+    it("removeChannel() deletes channel section and preserves other keys", async () => {
+      // Create config with multiple channels
+      const existingConfig = {
+        agents: { defaults: { model: "llama3.2:3b" } },
+        providers: { ollama: { api_base: "http://localhost:11434/v1" } },
+        channels: {
+          telegram: { enabled: true, token: "token1" },
+          discord: { enabled: true, token: "token2" }
+        }
+      };
+      await fs.writeFile(configPath, JSON.stringify(existingConfig, null, 2), "utf-8");
+
+      const mockExecWithArgs = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(
+        tempDir,
+        mockProbe,
+        null as any,
+        null as any,
+        null as any,
+        mockExecWithArgs
+      );
+
+      const result = await adapter.removeChannel!("telegram");
+
+      expect(result.removed).toBe(true);
+
+      // Read back the config
+      const configContent = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+
+      // Verify telegram was removed but discord remains
+      expect(config.channels.telegram).toBeUndefined();
+      expect(config.channels.discord).toBeDefined();
+      expect(config.channels.discord.token).toBe("token2");
+
+      // Verify other keys preserved
+      expect(config.agents.defaults.model).toBe("llama3.2:3b");
+      expect(config.providers.ollama.api_base).toBe("http://localhost:11434/v1");
+    });
+
+    it("requiresRestartAfterChannelChange() returns true", () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(tempDir, mockProbe);
+
+      expect(adapter.requiresRestartAfterChannelChange!()).toBe(true);
+    });
+
+    it("listChannels() parses channel list output", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: `Channels:
+  telegram        enabled    connected
+  discord         disabled   -
+  slack           enabled    disconnected`,
+        stderr: ""
+      });
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(
+        tempDir,
+        mockProbe,
+        null as any,
+        null as any,
+        null as any,
+        mockExecWithArgs
+      );
+
+      const channels = await adapter.listChannels!();
+
+      expect(mockExecWithArgs).toHaveBeenCalledWith("zeptoclaw", ["channel", "list"]);
+      expect(channels).toHaveLength(3);
+      expect(channels[0]).toEqual({ id: "telegram", enabled: true, connected: true });
+      expect(channels[1]).toEqual({ id: "discord", enabled: false, connected: false });
+      expect(channels[2]).toEqual({ id: "slack", enabled: true, connected: false });
+    });
+
+    it("configureChannel() validates channel id for injection safety", async () => {
+      const mockExecWithArgs = vi.fn();
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(
+        tempDir,
+        mockProbe,
+        null as any,
+        null as any,
+        null as any,
+        mockExecWithArgs
+      );
+
+      // Test malicious channel id
+      await expect(
+        adapter.configureChannel!({
+          id: "telegram; rm -rf /",
+          config: {},
+          secrets: { botToken: "token" }
+        })
+      ).rejects.toThrow(/Invalid channel id/);
+
+      // Verify exec was never called
+      expect(mockExecWithArgs).not.toHaveBeenCalled();
+    });
+  });
 });

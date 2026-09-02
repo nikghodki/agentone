@@ -104,6 +104,22 @@ export class ZeptoclawAdapter implements FrameworkAdapter {
   }
 
   /**
+   * Validate channel ID to prevent command injection.
+   * Allows alphanumeric, underscores, and hyphens.
+   *
+   * SECURITY: Defense-in-depth against command injection.
+   */
+  private validateChannelId(id: string): void {
+    const safePattern = /^[A-Za-z0-9_-]+$/;
+    if (!safePattern.test(id)) {
+      throw new Error(
+        `Invalid channel id: "${id}". ` +
+        `Only alphanumeric characters, underscores, and hyphens are allowed.`
+      );
+    }
+  }
+
+  /**
    * Verify zeptoclaw is installed. Per verified doc, it's installed via brew.
    * This is idempotent - just checks that the binary exists.
    */
@@ -509,5 +525,224 @@ export class ZeptoclawAdapter implements FrameworkAdapter {
   async restart(): Promise<void> {
     await this.stop();
     await this.start();
+  }
+
+  /**
+   * Configure a messaging channel (Phase 2a Task 4).
+   * Per verified doc: ZeptoClaw stores channel config in ~/.zeptoclaw/config.json
+   * at config.channels.<id> = { enabled: true, token: "<TOKEN>", ... }.
+   *
+   * DEEP-MERGE: Preserves ALL existing keys (agents, providers, other channels).
+   *
+   * SECURITY:
+   * - Token is stored in plaintext in config file (DOCUMENTED EXCEPTION per research).
+   * - File is chmod 600 after write to protect the plaintext token.
+   * - Token is NEVER logged (only written to config file).
+   * - Channel ID is validated to prevent injection.
+   */
+  async configureChannel(spec: {
+    id: string;
+    config: Record<string, string>;
+    secrets: Record<string, string>;
+  }): Promise<void> {
+    // Validate channel ID (defense-in-depth)
+    this.validateChannelId(spec.id);
+
+    // Ensure config directory exists
+    await fs.mkdir(this.configDir, { recursive: true });
+
+    const configPath = path.join(this.configDir, "config.json");
+
+    // Read existing config (or start with empty object)
+    let config: Record<string, any> = {};
+    try {
+      const existingContent = await fs.readFile(configPath, "utf-8");
+      config = JSON.parse(existingContent);
+    } catch (error) {
+      // File doesn't exist or is invalid - start fresh
+      config = {};
+    }
+
+    // DEEP-MERGE: Initialize channels section if missing
+    if (!config.channels) {
+      config.channels = {};
+    }
+
+    // Extract token from secrets (botToken is the standard field name per research)
+    const token = spec.secrets.botToken || spec.secrets.token;
+    if (!token) {
+      throw new Error(`Channel ${spec.id} requires a botToken or token in secrets`);
+    }
+
+    // Build channel config per verified ZeptoClaw format
+    config.channels[spec.id] = {
+      enabled: true,
+      token,  // DOCUMENTED EXCEPTION: token stored in plaintext in config file
+      ...spec.config,  // Merge any additional non-secret config
+    };
+
+    // Write config file (JSON.stringify safely escapes the token - no injection)
+    await fs.writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
+
+    // SECURITY: chmod 600 to protect plaintext token
+    // Per research doc: "token is plaintext-in-file — documented verified exception;
+    // add a code comment noting this + the chmod."
+    await fs.chmod(configPath, 0o600);
+
+    // NOTE: Token is never logged (only written to config file)
+  }
+
+  /**
+   * Verify a channel connection (Phase 2a Task 4).
+   * Per verified doc: `zeptoclaw channel test <id>`.
+   * Returns connected status; never throws on failure (returns connected:false).
+   */
+  async verifyChannel(id: string): Promise<{ connected: boolean; detail?: string }> {
+    this.validateChannelId(id);
+
+    try {
+      const result = await this.execWithArgsFn("zeptoclaw", ["channel", "test", id]);
+
+      // Parse output - look for "connected" keyword
+      const output = result.stdout.toLowerCase();
+      const connected = output.includes("connected");
+
+      return {
+        connected,
+        detail: result.stdout.trim() || undefined,
+      };
+    } catch (error) {
+      // Never throw - return connected:false with error detail
+      return {
+        connected: false,
+        detail: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
+   * Remove a channel (Phase 2a Task 4).
+   * Per verified doc: Delete the channel section from config.json (or set enabled:false).
+   * We choose deletion for cleaner config.
+   * Preserves all other keys (agents, providers, other channels).
+   */
+  async removeChannel(id: string): Promise<{ removed: boolean; note?: string }> {
+    this.validateChannelId(id);
+
+    const configPath = path.join(this.configDir, "config.json");
+
+    // Read existing config
+    let config: Record<string, any> = {};
+    try {
+      const existingContent = await fs.readFile(configPath, "utf-8");
+      config = JSON.parse(existingContent);
+    } catch (error) {
+      // Config file doesn't exist or is invalid
+      return { removed: false, note: "Config file not found or invalid" };
+    }
+
+    // Check if channel exists
+    if (!config.channels || !config.channels[id]) {
+      return { removed: false, note: `Channel ${id} not found in config` };
+    }
+
+    // Delete the channel section
+    delete config.channels[id];
+
+    // Write back the config
+    await fs.writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
+
+    return { removed: true };
+  }
+
+  /**
+   * List configured channels (Phase 2a Task 4).
+   * Per verified doc: Parse `zeptoclaw channel list` output.
+   * Falls back to reading config.json if command fails.
+   */
+  async listChannels(): Promise<Array<{ id: string; enabled: boolean; connected?: boolean }>> {
+    try {
+      const result = await this.execWithArgsFn("zeptoclaw", ["channel", "list"]);
+      return this.parseChannelList(result.stdout);
+    } catch (error) {
+      // Fallback: read from config.json
+      return this.listChannelsFromConfig();
+    }
+  }
+
+  /**
+   * Parse `zeptoclaw channel list` output.
+   * Expected format:
+   * Channels:
+   *   telegram        enabled    connected
+   *   discord         disabled   -
+   *   slack           enabled    disconnected
+   */
+  private parseChannelList(output: string): Array<{ id: string; enabled: boolean; connected?: boolean }> {
+    const channels: Array<{ id: string; enabled: boolean; connected?: boolean }> = [];
+    const lines = output.split("\n");
+
+    for (const line of lines) {
+      // Skip header line and empty lines
+      if (line.includes("Channels:") || !line.trim()) continue;
+
+      // Parse lines like "  telegram        enabled    connected"
+      const parts = line.trim().split(/\s+/);
+      if (parts.length >= 2) {
+        const id = parts[0];
+        const enabledStr = parts[1];
+        const connectedStr = parts[2];
+
+        const enabled = enabledStr === "enabled";
+        let connected: boolean | undefined;
+
+        if (connectedStr === "connected") {
+          connected = true;
+        } else if (connectedStr === "-") {
+          // "-" means no connection info (typically for disabled channels)
+          connected = false;
+        } else if (connectedStr === "disconnected") {
+          connected = false;
+        } else {
+          connected = undefined;
+        }
+
+        channels.push({ id, enabled, connected });
+      }
+    }
+
+    return channels;
+  }
+
+  /**
+   * Fallback: Read channels from config.json.
+   */
+  private async listChannelsFromConfig(): Promise<Array<{ id: string; enabled: boolean; connected?: boolean }>> {
+    const configPath = path.join(this.configDir, "config.json");
+
+    try {
+      const content = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(content);
+
+      if (!config.channels) {
+        return [];
+      }
+
+      return Object.keys(config.channels).map((id) => ({
+        id,
+        enabled: config.channels[id].enabled ?? true,
+        connected: undefined,  // Can't determine connection status from config
+      }));
+    } catch (error) {
+      return [];
+    }
+  }
+
+  /**
+   * Check if restart is required after channel changes (Phase 2a Task 4).
+   * Per verified doc: ZeptoClaw requires gateway restart after channel config changes.
+   */
+  requiresRestartAfterChannelChange(): boolean {
+    return true;
   }
 }
