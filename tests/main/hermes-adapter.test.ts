@@ -1363,14 +1363,15 @@ Available skills:
       const mockProbe = vi.fn().mockResolvedValue(true);
       adapter = new HermesAdapter(tempDir, mockProbe);
 
-      // Setup: config with multiple platforms
+      // Setup: config with platforms (telegram, slack) and top-level discord (FIXED: was wrongly under platforms)
       const config = `platforms:
   telegram:
     enabled: true
   slack:
     enabled: false
-  discord:
-    enabled: true
+discord:
+  require_mention: true
+  auto_thread: false
 `;
       await fs.writeFile(configPath, config, "utf-8");
 
@@ -1405,6 +1406,201 @@ Available skills:
       const channels = await adapter.listChannels();
 
       expect(channels).toEqual([]);
+    });
+
+    // Task 3 (Slice 2c): Discord top-level section + listChannels surfaces it
+    it("listChannels surfaces top-level discord section (NOT platforms.discord)", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new HermesAdapter(tempDir, mockProbe);
+
+      // Setup: config with platforms.slack AND top-level discord
+      const config = `platforms:
+  slack:
+    enabled: true
+discord:
+  require_mention: true
+  auto_thread: false
+`;
+      await fs.writeFile(configPath, config, "utf-8");
+
+      const channels = await adapter.listChannels();
+
+      // Should list both slack (platforms) and discord (top-level)
+      expect(channels).toHaveLength(2);
+      expect(channels).toContainEqual({ id: "slack", enabled: true });
+      expect(channels).toContainEqual({ id: "discord", enabled: true });
+    });
+
+    // Task 3 (Slice 2c): After removeChannel("discord"), listChannels reports enabled:false
+    it("after removeChannel discord, listChannels returns discord with enabled:false", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new HermesAdapter(tempDir, mockProbe);
+
+      // Setup: configure discord channel
+      await adapter.configureChannel({
+        id: "discord",
+        config: {},
+        secrets: { botToken: "test-token" }
+      });
+
+      // Verify discord is enabled before removal
+      let channels = await adapter.listChannels();
+      expect(channels).toContainEqual({ id: "discord", enabled: true });
+
+      // Remove discord
+      await adapter.removeChannel("discord");
+
+      // Verify discord is now disabled (not removed from config, just enabled:false)
+      channels = await adapter.listChannels();
+      expect(channels).toContainEqual({ id: "discord", enabled: false });
+    });
+  });
+
+  // Task 3 (Slice 2c): Discord special handling
+  describe("configureChannel() discord top-level", () => {
+    it("writes top-level discord section (NOT platforms.discord) + token to .env", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new HermesAdapter(tempDir, mockProbe);
+
+      // Seed existing config with model and platforms
+      const initialConfig = `model:
+  default: "llama3.2:3b"
+platforms:
+  slack:
+    enabled: true
+`;
+      await fs.writeFile(configPath, initialConfig, "utf-8");
+
+      // Configure discord channel
+      await adapter.configureChannel({
+        id: "discord",
+        config: {},
+        secrets: { botToken: "discord-bot-token-123" }
+      });
+
+      // Verify config has TOP-LEVEL discord section (NOT platforms.discord)
+      const configContent = await fs.readFile(configPath, "utf-8");
+      expect(configContent).toContain("discord:");
+      expect(configContent).toMatch(/^discord:/m); // Top-level (starts at line beginning)
+      expect(configContent).toContain("require_mention:");
+      expect(configContent).toContain("auto_thread:");
+      expect(configContent).toContain("reactions:");
+
+      // Verify platforms section still exists and NOT modified
+      expect(configContent).toContain("platforms:");
+      expect(configContent).toContain("slack:");
+      expect(configContent).toContain("enabled: true");
+
+      // Verify NO platforms.discord (discord should be at top-level, not indented under platforms)
+      // Check that discord: appears at line start (top-level), not with 2-space indent (under platforms)
+      expect(configContent).not.toMatch(/^  discord:/m);
+
+      // Verify token in .env (NOT in config.yaml)
+      const envPath = path.join(tempDir, ".env");
+      const envContent = await fs.readFile(envPath, "utf-8");
+      expect(envContent).toContain("DISCORD_BOT_TOKEN=discord-bot-token-123");
+
+      // Verify token NOT in config.yaml
+      expect(configContent).not.toContain("discord-bot-token-123");
+    });
+
+    it("configureChannel discord preserves existing discord sub-keys", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new HermesAdapter(tempDir, mockProbe);
+
+      // Seed config with existing discord section (custom settings)
+      const initialConfig = `model:
+  default: "llama3.2:3b"
+discord:
+  require_mention: false
+  auto_thread: true
+  reactions: true
+  free_response_channels: "channel1,channel2"
+`;
+      await fs.writeFile(configPath, initialConfig, "utf-8");
+
+      // Configure discord again (should preserve existing settings)
+      await adapter.configureChannel({
+        id: "discord",
+        config: {},
+        secrets: { botToken: "new-token" }
+      });
+
+      const configContent = await fs.readFile(configPath, "utf-8");
+
+      // Verify existing settings preserved
+      expect(configContent).toContain("require_mention: false");
+      expect(configContent).toContain("auto_thread: true");
+      expect(configContent).toContain("reactions: true");
+      expect(configContent).toContain("free_response_channels: \"channel1,channel2\"");
+    });
+
+    it("configureChannel slack unchanged (uses platforms path)", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new HermesAdapter(tempDir, mockProbe);
+
+      // Configure slack (should use platforms.slack path)
+      await adapter.configureChannel({
+        id: "slack",
+        config: {},
+        secrets: {
+          botToken: "xoxb-slack",
+          appToken: "xapp-slack",
+          signingSecret: "slack-secret"
+        }
+      });
+
+      const configContent = await fs.readFile(configPath, "utf-8");
+
+      // Verify platforms.slack written (NOT top-level slack)
+      expect(configContent).toContain("platforms:");
+      expect(configContent).toMatch(/platforms:[\s\S]*slack:/);
+      expect(configContent).toMatch(/slack:[\s\S]*enabled: true/);
+
+      // Verify env vars
+      const envPath = path.join(tempDir, ".env");
+      const envContent = await fs.readFile(envPath, "utf-8");
+      expect(envContent).toContain("SLACK_BOT_TOKEN=xoxb-slack");
+      expect(envContent).toContain("SLACK_APP_TOKEN=xapp-slack");
+      expect(envContent).toContain("SLACK_SIGNING_SECRET=slack-secret");
+    });
+  });
+
+  describe("removeChannel() discord top-level", () => {
+    it("removeChannel disables top-level discord section (NOT platforms.discord)", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new HermesAdapter(tempDir, mockProbe);
+
+      // Setup: config with top-level discord
+      const initialConfig = `model:
+  default: "llama3.2:3b"
+discord:
+  require_mention: true
+  auto_thread: false
+  reactions: true
+platforms:
+  slack:
+    enabled: true
+`;
+      await fs.writeFile(configPath, initialConfig, "utf-8");
+
+      // Remove discord
+      const result = await adapter.removeChannel("discord");
+
+      expect(result.removed).toBe(true);
+
+      const configContent = await fs.readFile(configPath, "utf-8");
+
+      // Verify discord section disabled (set enabled: false) OR removed
+      // Implementation can choose either approach; test for enabled: false
+      if (configContent.includes("discord:")) {
+        expect(configContent).toMatch(/discord:[\s\S]*enabled: false/);
+      }
+
+      // Verify platforms.slack still exists and enabled
+      expect(configContent).toContain("platforms:");
+      expect(configContent).toContain("slack:");
+      expect(configContent).toMatch(/slack:[\s\S]*enabled: true/);
     });
   });
 });

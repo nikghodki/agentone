@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { CHANNELS, ChannelDef, ChannelField } from "@shared/channels";
+import { CHANNELS } from "@shared/channels";
 import { RadioCardGroup, RadioCard } from "./ui/RadioCardGroup";
 import { Input } from "./ui/Input";
 import { Callout } from "./ui/Callout";
@@ -12,7 +12,7 @@ export interface ChannelSetupFormProps {
   onConnected?: (id: string) => void;
 }
 
-type ConnectState = "idle" | "connecting" | "success" | "error";
+type ConnectState = "idle" | "connecting" | "verifying" | "success" | "error";
 
 export function ChannelSetupForm({
   deploymentId,
@@ -49,18 +49,25 @@ export function ChannelSetupForm({
     setConnectState("connecting");
     setConnectDetail("");
 
-    // Separate config (non-secret) and secrets (secret fields)
-    const config: Record<string, string> = {};
-    const secrets: Record<string, string> = {};
+    // For QR channels, config and secrets are empty
+    let config: Record<string, string> = {};
+    let secrets: Record<string, string> = {};
 
-    selectedChannel.fields.forEach((field) => {
-      const value = fieldValues[field.key] || "";
-      if (field.secret) {
-        secrets[field.key] = value;
-      } else {
-        config[field.key] = value;
-      }
-    });
+    if (selectedChannel.kind === "credential") {
+      // Separate config (non-secret) and secrets (secret fields)
+      selectedChannel.fields.forEach((field) => {
+        const value = fieldValues[field.key] || "";
+        // Only include non-empty values or required fields
+        if (value) {
+          if (field.secret) {
+            secrets[field.key] = value;
+          } else {
+            config[field.key] = value;
+          }
+        }
+      });
+    }
+    // For QR channels, config and secrets remain empty
 
     try {
       // Staged progress
@@ -89,6 +96,24 @@ export function ChannelSetupForm({
       setConnectState("error");
       setConnectDetail(err instanceof Error ? err.message : "Unknown error occurred");
     }
+  };
+
+  const getQrPairingCommand = (frameworkId: string): string => {
+    switch (frameworkId) {
+      case "openclaw":
+        return "openclaw channels login --channel whatsapp";
+      case "hermes":
+        return "hermes whatsapp";
+      case "zeptoclaw":
+        return "zeptoclaw channel setup whatsapp_web";
+      default:
+        return "run your framework's WhatsApp pairing command";
+    }
+  };
+
+  const handleQrDone = () => {
+    if (!selectedChannel) return;
+    onConnected?.(selectedChannel.id);
   };
 
   // No channels available for this framework
@@ -129,18 +154,37 @@ export function ChannelSetupForm({
             {selectedChannel.instructions}
           </Callout>
 
-          {/* Field inputs */}
-          {selectedChannel.fields.map((field) => (
-            <Input
-              key={field.key}
-              label={field.label}
-              type={field.secret ? "password" : "text"}
-              placeholder={field.placeholder}
-              helper={field.help}
-              value={fieldValues[field.key] || ""}
-              onChange={(e) => handleFieldChange(field.key, e.target.value)}
-            />
-          ))}
+          {/* Credential channel: show field inputs */}
+          {selectedChannel.kind === "credential" && (
+            <>
+              {selectedChannel.fields.map((field) => (
+                <Input
+                  key={field.key}
+                  label={field.optional ? `${field.label} (optional)` : field.label}
+                  type={field.secret ? "password" : "text"}
+                  placeholder={field.placeholder}
+                  helper={field.help}
+                  value={fieldValues[field.key] || ""}
+                  onChange={(e) => handleFieldChange(field.key, e.target.value)}
+                />
+              ))}
+            </>
+          )}
+
+          {/* QR channel: show guided pairing instructions only */}
+          {selectedChannel.kind === "qr" && (
+            <>
+              <Callout tone="info">
+                Pairing happens in the framework itself by running a terminal command that displays a QR code. Scan it with your phone to complete pairing.
+              </Callout>
+              <div className="rounded-lg bg-slate-50 p-4 border border-slate-200">
+                <h4 className="text-sm font-medium text-slate-900 mb-2">Pairing command</h4>
+                <code className="text-sm text-indigo-700 font-mono">
+                  {getQrPairingCommand(frameworkId)}
+                </code>
+              </div>
+            </>
+          )}
 
           {/* Connect button and progress */}
           {connectState === "connecting" && (
@@ -151,15 +195,29 @@ export function ChannelSetupForm({
             />
           )}
 
-          {connectState === "idle" && (
+          {/* Credential channel: Connect button */}
+          {selectedChannel.kind === "credential" && connectState === "idle" && (
             <Button
               variant="primary"
               onClick={handleConnect}
               disabled={
-                selectedChannel.fields.some((f) => !fieldValues[f.key])
+                // Only require non-optional fields to be filled
+                selectedChannel.fields
+                  .filter((f) => !f.optional)
+                  .some((f) => !fieldValues[f.key])
               }
             >
               Connect
+            </Button>
+          )}
+
+          {/* QR channel: Done button */}
+          {selectedChannel.kind === "qr" && (
+            <Button
+              variant="primary"
+              onClick={handleQrDone}
+            >
+              Done
             </Button>
           )}
 

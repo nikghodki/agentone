@@ -598,8 +598,13 @@ export class HermesAdapter implements FrameworkAdapter {
     // Ensure config directory exists
     await fs.mkdir(this.configDir, { recursive: true });
 
-    // 1. Update config.yaml: add/update platforms.<id>.enabled: true
-    await this.updateConfigYamlPlatform(spec.id, true, spec.config);
+    // Task 3 (Slice 2c): Discord uses top-level discord: section, not platforms.discord
+    if (spec.id === "discord") {
+      await this.updateConfigYamlDiscordTopLevel(spec.config);
+    } else {
+      // All other channels use platforms.<id> path
+      await this.updateConfigYamlPlatform(spec.id, true, spec.config);
+    }
 
     // 2. Write secrets to .env (merge with existing)
     await this.mergeEnvSecrets(spec.secrets, spec.id);
@@ -715,6 +720,65 @@ export class HermesAdapter implements FrameworkAdapter {
   }
 
   /**
+   * Update config.yaml to write a TOP-LEVEL discord: section (Task 3 Slice 2c).
+   * Sets default discord config keys (require_mention, auto_thread, reactions, free_response_channels)
+   * only if they don't already exist (preserves user customizations).
+   */
+  private async updateConfigYamlDiscordTopLevel(
+    extraConfig: Record<string, string>
+  ): Promise<void> {
+    const configPath = path.join(this.configDir, "config.yaml");
+
+    let content = "";
+    try {
+      content = await fs.readFile(configPath, "utf-8");
+    } catch (error: any) {
+      if (error.code !== "ENOENT") throw error;
+      // File doesn't exist, start fresh
+    }
+
+    const lines = content.split("\n");
+    const result: string[] = [];
+    let foundDiscord = false;
+    let inDiscord = false;
+
+    // Check if discord section already exists
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      // Detect top-level discord: section
+      if (trimmed === "discord:" && !line.startsWith(" ")) {
+        foundDiscord = true;
+        inDiscord = true;
+        result.push(line);
+        continue;
+      }
+
+      // Exit discord section when we hit another top-level key
+      if (inDiscord && trimmed && !line.startsWith(" ") && !trimmed.startsWith("#")) {
+        inDiscord = false;
+      }
+
+      result.push(line);
+    }
+
+    // If discord section doesn't exist, add it at the end with defaults
+    if (!foundDiscord) {
+      if (result.length > 0 && result[result.length - 1].trim() !== "") {
+        result.push(""); // Add blank line before discord
+      }
+      result.push("discord:");
+      result.push("  require_mention: true");
+      result.push("  auto_thread: true");
+      result.push("  reactions: true");
+      result.push('  free_response_channels: ""');
+    }
+
+    await fs.writeFile(configPath, result.join("\n"), "utf-8");
+  }
+
+  /**
    * Merge secrets into .env file without clobbering existing vars.
    * SECURITY: Secrets never logged.
    */
@@ -810,14 +874,81 @@ export class HermesAdapter implements FrameworkAdapter {
   /**
    * Remove a channel by setting enabled:false in config.yaml.
    * Does NOT delete the .env secrets (they're harmless if disabled).
+   * Task 3 (Slice 2c): Discord uses top-level section, so disable it there.
    */
   async removeChannel(id: string): Promise<{ removed: boolean; note?: string }> {
     this.validateChannelId(id);
 
-    // Set enabled:false in config.yaml
-    await this.updateConfigYamlPlatform(id, false, {});
+    // Task 3 (Slice 2c): Discord uses top-level discord: section
+    if (id === "discord") {
+      await this.removeDiscordTopLevel();
+    } else {
+      // All other channels use platforms.<id> path
+      await this.updateConfigYamlPlatform(id, false, {});
+    }
 
     return { removed: true };
+  }
+
+  /**
+   * Disable the top-level discord: section by adding enabled: false.
+   */
+  private async removeDiscordTopLevel(): Promise<void> {
+    const configPath = path.join(this.configDir, "config.yaml");
+
+    let content = "";
+    try {
+      content = await fs.readFile(configPath, "utf-8");
+    } catch (error: any) {
+      if (error.code !== "ENOENT") throw error;
+      // File doesn't exist, nothing to remove
+      return;
+    }
+
+    const lines = content.split("\n");
+    const result: string[] = [];
+    let inDiscord = false;
+    let foundDiscord = false;
+    let addedEnabled = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      // Detect top-level discord: section
+      if (trimmed === "discord:" && !line.startsWith(" ")) {
+        foundDiscord = true;
+        inDiscord = true;
+        result.push(line);
+        continue;
+      }
+
+      // Exit discord section when we hit another top-level key
+      if (inDiscord && trimmed && !line.startsWith(" ") && !trimmed.startsWith("#")) {
+        // Add enabled: false before exiting discord section if not added yet
+        if (!addedEnabled) {
+          result.push("  enabled: false");
+          addedEnabled = true;
+        }
+        inDiscord = false;
+      }
+
+      // Check if enabled: line already exists in discord section
+      if (inDiscord && line.match(/^\s+enabled:/)) {
+        result.push("  enabled: false");
+        addedEnabled = true;
+        continue;
+      }
+
+      result.push(line);
+    }
+
+    // If we're still in discord at the end, add enabled: false
+    if (inDiscord && !addedEnabled) {
+      result.push("  enabled: false");
+    }
+
+    await fs.writeFile(configPath, result.join("\n"), "utf-8");
   }
 
   /**
@@ -849,6 +980,7 @@ export class HermesAdapter implements FrameworkAdapter {
   /**
    * Parse channels from config.yaml content.
    * Extracts platforms.* entries with enabled status.
+   * Task 3 (Slice 2c): Also detects top-level discord: section.
    */
   private parseChannelsFromYaml(content: string): Array<{ id: string; enabled: boolean }> {
     const lines = content.split("\n");
@@ -856,9 +988,35 @@ export class HermesAdapter implements FrameworkAdapter {
 
     let inPlatforms = false;
     let currentPlatform: string | null = null;
+    let inDiscord = false;
+    let discordEnabled: boolean | null = null;
 
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       const trimmed = line.trim();
+
+      // Task 3 (Slice 2c): Detect top-level discord: section
+      if (trimmed === "discord:" && !line.startsWith(" ")) {
+        inDiscord = true;
+        discordEnabled = null; // Reset for scanning
+        continue;
+      }
+
+      // Exit discord section when we hit another top-level key
+      if (inDiscord && trimmed && !line.startsWith(" ") && !trimmed.startsWith("#")) {
+        // Push discord channel with found enabled state (default true if not found)
+        channels.push({ id: "discord", enabled: discordEnabled ?? true });
+        inDiscord = false;
+        discordEnabled = null;
+      }
+
+      // Scan for enabled: key within discord section
+      if (inDiscord) {
+        const enabledMatch = line.match(/^\s+enabled:\s*(true|false)/);
+        if (enabledMatch) {
+          discordEnabled = enabledMatch[1] === "true";
+        }
+      }
 
       // Detect platforms: section
       if (trimmed === "platforms:") {
@@ -868,7 +1026,7 @@ export class HermesAdapter implements FrameworkAdapter {
 
       // Exit platforms section on new top-level key
       if (inPlatforms && trimmed && !line.startsWith(" ") && !trimmed.startsWith("#")) {
-        break;
+        inPlatforms = false;
       }
 
       if (inPlatforms) {
@@ -891,6 +1049,11 @@ export class HermesAdapter implements FrameworkAdapter {
           }
         }
       }
+    }
+
+    // If we're still in discord at the end, push it
+    if (inDiscord) {
+      channels.push({ id: "discord", enabled: discordEnabled ?? true });
     }
 
     return channels;

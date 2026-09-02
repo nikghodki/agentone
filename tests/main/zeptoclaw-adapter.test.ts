@@ -1432,5 +1432,118 @@ describe("ZeptoclawAdapter", () => {
       // Verify exec was never called
       expect(mockExecWithArgs).not.toHaveBeenCalled();
     });
+
+    // Task 2 (Slice 2c): Slack special handling
+    it("configureChannel() writes slack with bot_token+app_token (NO token or signing_secret)", async () => {
+      // Seed existing config with sibling keys to prove deep-merge
+      const existingConfig = {
+        agents: { defaults: { model: "llama3.2:3b" } },
+        providers: { ollama: { api_base: "http://localhost:11434/v1" } }
+      };
+      await fs.writeFile(configPath, JSON.stringify(existingConfig, null, 2), "utf-8");
+
+      const mockExecWithArgs = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(
+        tempDir,
+        mockProbe,
+        null as any,
+        null as any,
+        null as any,
+        mockExecWithArgs
+      );
+
+      // Configure slack channel
+      await adapter.configureChannel!({
+        id: "slack",
+        config: {},
+        secrets: { botToken: "xoxb-B", appToken: "xapp-A" }
+      });
+
+      // Read back the config
+      const configContent = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+
+      // Verify slack channel written with correct keys
+      expect(config.channels).toBeDefined();
+      expect(config.channels.slack).toBeDefined();
+      expect(config.channels.slack.enabled).toBe(true);
+      expect(config.channels.slack.bot_token).toBe("xoxb-B");
+      expect(config.channels.slack.app_token).toBe("xapp-A");
+
+      // Verify NO "token" key and NO "signing_secret" key
+      expect(config.channels.slack.token).toBeUndefined();
+      expect(config.channels.slack.signing_secret).toBeUndefined();
+
+      // Verify existing keys preserved
+      expect(config.agents.defaults.model).toBe("llama3.2:3b");
+      expect(config.providers.ollama.api_base).toBe("http://localhost:11434/v1");
+
+      // Verify file mode 600
+      const stats = await fs.stat(configPath);
+      const mode = stats.mode & 0o777;
+      expect(mode).toBe(0o600);
+    });
+
+    it("configureChannel() slack omits undefined secrets", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(
+        tempDir,
+        mockProbe,
+        null as any,
+        null as any,
+        null as any,
+        mockExecWithArgs
+      );
+
+      // Configure slack with only botToken (appToken undefined)
+      await adapter.configureChannel!({
+        id: "slack",
+        config: {},
+        secrets: { botToken: "xoxb-B" }
+      });
+
+      const configContent = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+
+      // bot_token should be present
+      expect(config.channels.slack.bot_token).toBe("xoxb-B");
+
+      // app_token should be omitted (not present in config at all)
+      expect("app_token" in config.channels.slack).toBe(false);
+    });
+
+    it("configureChannel() discord unchanged (single token, generic path)", async () => {
+      const mockExecWithArgs = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new ZeptoclawAdapter(
+        tempDir,
+        mockProbe,
+        null as any,
+        null as any,
+        null as any,
+        mockExecWithArgs
+      );
+
+      // Configure discord channel
+      await adapter.configureChannel!({
+        id: "discord",
+        config: {},
+        secrets: { botToken: "T" }
+      });
+
+      const configContent = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(configContent);
+
+      // Verify discord uses single-token generic format
+      expect(config.channels.discord).toBeDefined();
+      expect(config.channels.discord.enabled).toBe(true);
+      expect(config.channels.discord.token).toBe("T");
+
+      // Verify NO bot_token or app_token keys (generic path)
+      expect(config.channels.discord.bot_token).toBeUndefined();
+      expect(config.channels.discord.app_token).toBeUndefined();
+    });
   });
 });
