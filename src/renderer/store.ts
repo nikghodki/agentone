@@ -15,9 +15,10 @@ export type AppView =
   | "task"
   | "capabilities"
   | "channels"
-  | "wizard";
+  | "wizard"
+  | "use-cases";
 
-export type WizardStep = "framework" | "config" | "model-location" | "model-local" | "model-cloud" | "deploy" | "channel";
+export type WizardStep = "framework" | "config" | "model-location" | "model-local" | "model-cloud" | "deploy" | "channel" | "use-case";
 
 interface GuidedTaskContext {
   personaId: string;

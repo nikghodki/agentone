@@ -35,7 +35,7 @@ describe("ChannelStep", () => {
     expect(screen.getByText("Telegram")).toBeTruthy();
   });
 
-  it("Skip action sets view to task", async () => {
+  it("Skip action sets wizardStep to use-case", async () => {
     const { ChannelStep } = await import("../../src/renderer/pages/wizard/ChannelStep");
 
     render(<ChannelStep />);
@@ -44,12 +44,12 @@ describe("ChannelStep", () => {
     const skipButton = screen.getByRole("button", { name: /Skip/i });
     fireEvent.click(skipButton);
 
-    // Should set view to task
+    // Should set wizardStep to use-case
     const state = useAppStore.getState();
-    expect(state.view).toBe("task");
+    expect(state.wizardStep).toBe("use-case");
   });
 
-  it("Continue to app action sets view to task after connect", async () => {
+  it("Continue to app action sets wizardStep to use-case after connect", async () => {
     const { ChannelStep } = await import("../../src/renderer/pages/wizard/ChannelStep");
     const { waitFor } = await import("@testing-library/react");
 
@@ -76,8 +76,8 @@ describe("ChannelStep", () => {
     const continueButton = screen.getByRole("button", { name: /Continue to app/i });
     fireEvent.click(continueButton);
 
-    // Should set view to task
+    // Should set wizardStep to use-case
     const state = useAppStore.getState();
-    expect(state.view).toBe("task");
+    expect(state.wizardStep).toBe("use-case");
   });
 });

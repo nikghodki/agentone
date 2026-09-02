@@ -8,6 +8,7 @@ import { ModelLocalStep } from "./ModelLocalStep";
 import { ModelCloudStep } from "./ModelCloudStep";
 import { DeployStep } from "./DeployStep";
 import { ChannelStep } from "./ChannelStep";
+import { UseCaseStep } from "./UseCaseStep";
 
 // Map wizard steps to the 4 visible groups in StepProgress
 function getStepProgressKey(wizardStep: WizardStep): string {
@@ -23,6 +24,7 @@ function getStepProgressKey(wizardStep: WizardStep): string {
     case "deploy":
       return "deploy";
     case "channel":
+    case "use-case":
       return "deploy";
     default:
       return "framework";
@@ -45,6 +47,8 @@ function getNextStep(current: WizardStep, modelBackendKind?: string): WizardStep
     case "deploy":
       return "channel";
     case "channel":
+      return "use-case";
+    case "use-case":
       return null; // End of wizard
     default:
       return null;
@@ -68,6 +72,8 @@ function getPreviousStep(current: WizardStep, modelBackendKind?: string): Wizard
       return modelBackendKind === "cloud" ? "model-cloud" : "model-local";
     case "channel":
       return "deploy";
+    case "use-case":
+      return "channel";
     default:
       return null;
   }
@@ -131,6 +137,8 @@ export function Wizard() {
         return <DeployStep />;
       case "channel":
         return <ChannelStep />;
+      case "use-case":
+        return <UseCaseStep />;
       default:
         return (
           <div className="text-slate-700">
@@ -148,7 +156,7 @@ export function Wizard() {
       current={stepProgressKey}
       canContinue={canContinue}
       onBack={canGoBack ? handleBack : undefined}
-      onContinue={wizardStep === "deploy" || wizardStep === "channel" ? undefined : handleContinue}
+      onContinue={wizardStep === "deploy" || wizardStep === "channel" || wizardStep === "use-case" ? undefined : handleContinue}
     >
       {renderStep()}
     </WizardLayout>
