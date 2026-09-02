@@ -934,4 +934,339 @@ Available skills:
       expect(gap).toEqual({ type: "skill", name: "scope/custom-skill" });
     });
   });
+
+  // ========================================================================
+  // TASK 3: Channel methods - configureChannel/verifyChannel/removeChannel/listChannels
+  // ========================================================================
+
+  describe("configureChannel()", () => {
+    it("writes platforms.telegram.enabled in config.yaml AND secret to .env", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new HermesAdapter(tempDir, mockProbe);
+
+      await adapter.configureChannel({
+        id: "telegram",
+        config: {},
+        secrets: { botToken: "xoxb-test-telegram-token" },
+      });
+
+      // Verify config.yaml has platforms.telegram.enabled: true
+      const configContent = await fs.readFile(configPath, "utf-8");
+      expect(configContent).toContain("platforms:");
+      expect(configContent).toContain("telegram:");
+      expect(configContent).toContain("enabled: true");
+
+      // Verify .env has TELEGRAM_BOT_TOKEN (secret not in config)
+      const envPath = path.join(tempDir, ".env");
+      const envContent = await fs.readFile(envPath, "utf-8");
+      expect(envContent).toContain("TELEGRAM_BOT_TOKEN=xoxb-test-telegram-token");
+
+      // Verify secret NOT in config.yaml
+      expect(configContent).not.toContain("xoxb-test-telegram-token");
+    });
+
+    it("preserves existing config.yaml content (deep-merge)", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new HermesAdapter(tempDir, mockProbe);
+
+      // Write initial config with model section
+      const initialConfig = `model:
+  default: "llama3.2:3b"
+  provider: "ollama"
+  base_url: "http://localhost:11434/v1"
+`;
+      await fs.writeFile(configPath, initialConfig, "utf-8");
+
+      // Add telegram channel
+      await adapter.configureChannel({
+        id: "telegram",
+        config: {},
+        secrets: { botToken: "test-token" },
+      });
+
+      const configContent = await fs.readFile(configPath, "utf-8");
+
+      // Verify model section is preserved
+      expect(configContent).toContain('default: "llama3.2:3b"');
+      expect(configContent).toContain('provider: "ollama"');
+      expect(configContent).toContain('base_url: "http://localhost:11434/v1"');
+
+      // Verify platforms section added
+      expect(configContent).toContain("platforms:");
+      expect(configContent).toContain("telegram:");
+      expect(configContent).toContain("enabled: true");
+    });
+
+    it("merges into existing .env without clobbering other vars", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new HermesAdapter(tempDir, mockProbe);
+
+      // Write initial .env with existing var
+      const envPath = path.join(tempDir, ".env");
+      await fs.writeFile(envPath, "ANTHROPIC_API_KEY=sk-existing\n", "utf-8");
+
+      // Add telegram channel
+      await adapter.configureChannel({
+        id: "telegram",
+        config: {},
+        secrets: { botToken: "test-token" },
+      });
+
+      const envContent = await fs.readFile(envPath, "utf-8");
+
+      // Verify existing var preserved
+      expect(envContent).toContain("ANTHROPIC_API_KEY=sk-existing");
+
+      // Verify new var added
+      expect(envContent).toContain("TELEGRAM_BOT_TOKEN=test-token");
+    });
+
+    it("validates channel id to prevent injection", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new HermesAdapter(tempDir, mockProbe);
+
+      await expect(
+        adapter.configureChannel({
+          id: "telegram; rm -rf /",
+          config: {},
+          secrets: { botToken: "test" },
+        })
+      ).rejects.toThrow(/Invalid channel/);
+    });
+
+    it("never logs secret values", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const consoleSpy = vi.spyOn(console, "log");
+      const consoleErrorSpy = vi.spyOn(console, "error");
+
+      adapter = new HermesAdapter(tempDir, mockProbe);
+
+      await adapter.configureChannel({
+        id: "telegram",
+        config: {},
+        secrets: { botToken: "secret-token-12345" },
+      });
+
+      // Verify secret never logged
+      expect(consoleSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining("secret-token-12345")
+      );
+      expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining("secret-token-12345")
+      );
+
+      consoleSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
+    });
+
+    it("configures slack with multiple env vars", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new HermesAdapter(tempDir, mockProbe);
+
+      await adapter.configureChannel({
+        id: "slack",
+        config: {},
+        secrets: {
+          botToken: "xoxb-slack-bot",
+          appToken: "xapp-slack-app",
+          signingSecret: "slack-signing-secret",
+        },
+      });
+
+      // Verify config has platforms.slack.enabled
+      const configContent = await fs.readFile(configPath, "utf-8");
+      expect(configContent).toContain("slack:");
+      expect(configContent).toContain("enabled: true");
+
+      // Verify .env has all three tokens
+      const envPath = path.join(tempDir, ".env");
+      const envContent = await fs.readFile(envPath, "utf-8");
+      expect(envContent).toContain("SLACK_BOT_TOKEN=xoxb-slack-bot");
+      expect(envContent).toContain("SLACK_APP_TOKEN=xapp-slack-app");
+      expect(envContent).toContain("SLACK_SIGNING_SECRET=slack-signing-secret");
+    });
+  });
+
+  describe("verifyChannel()", () => {
+    it("parses gateway status and returns connected:true when running", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: `Gateways:
+  ✓ default (current)        — running (pid 12345)
+`,
+        stderr: "",
+      });
+
+      adapter = new HermesAdapter(
+        tempDir,
+        mockProbe,
+        undefined,
+        null,
+        undefined,
+        mockExecWithArgs
+      );
+
+      const result = await adapter.verifyChannel("telegram");
+
+      expect(mockExecWithArgs).toHaveBeenCalledWith("hermes", ["gateway", "status"]);
+      expect(result.connected).toBe(true);
+      expect(result.detail).toContain("running");
+    });
+
+    it("returns connected:false when gateway not running (no throw)", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const mockExecWithArgs = vi.fn().mockResolvedValue({
+        stdout: `Gateways:
+  ✗ default (current)        — not running
+`,
+        stderr: "",
+      });
+
+      adapter = new HermesAdapter(
+        tempDir,
+        mockProbe,
+        undefined,
+        null,
+        undefined,
+        mockExecWithArgs
+      );
+
+      const result = await adapter.verifyChannel("telegram");
+
+      expect(result.connected).toBe(false);
+      expect(result.detail).toContain("not running");
+    });
+
+    it("returns connected:false on exec failure (no throw)", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      const mockExecWithArgs = vi
+        .fn()
+        .mockRejectedValue(new Error("hermes command not found"));
+
+      adapter = new HermesAdapter(
+        tempDir,
+        mockProbe,
+        undefined,
+        null,
+        undefined,
+        mockExecWithArgs
+      );
+
+      const result = await adapter.verifyChannel("telegram");
+
+      expect(result.connected).toBe(false);
+      expect(result.detail).toContain("not found");
+    });
+  });
+
+  describe("removeChannel()", () => {
+    it("sets platforms.<id>.enabled to false in config.yaml", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new HermesAdapter(tempDir, mockProbe);
+
+      // Setup: create config with enabled telegram
+      const initialConfig = `platforms:
+  telegram:
+    enabled: true
+`;
+      await fs.writeFile(configPath, initialConfig, "utf-8");
+
+      // Remove telegram
+      const result = await adapter.removeChannel("telegram");
+
+      expect(result.removed).toBe(true);
+
+      // Verify enabled set to false
+      const configContent = await fs.readFile(configPath, "utf-8");
+      expect(configContent).toContain("telegram:");
+      expect(configContent).toContain("enabled: false");
+      expect(configContent).not.toContain("enabled: true");
+    });
+
+    it("preserves other platforms when removing one", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new HermesAdapter(tempDir, mockProbe);
+
+      // Setup: config with telegram and slack
+      const initialConfig = `platforms:
+  telegram:
+    enabled: true
+  slack:
+    enabled: true
+`;
+      await fs.writeFile(configPath, initialConfig, "utf-8");
+
+      // Remove telegram only
+      await adapter.removeChannel("telegram");
+
+      const configContent = await fs.readFile(configPath, "utf-8");
+
+      // Telegram disabled
+      expect(configContent).toContain("telegram:");
+      expect(configContent).toMatch(/telegram:[\s\S]*?enabled: false/);
+
+      // Slack still enabled
+      expect(configContent).toContain("slack:");
+      expect(configContent).toMatch(/slack:[\s\S]*?enabled: true/);
+    });
+  });
+
+  describe("requiresRestartAfterChannelChange()", () => {
+    it("returns true (restart required)", () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new HermesAdapter(tempDir, mockProbe);
+
+      expect(adapter.requiresRestartAfterChannelChange()).toBe(true);
+    });
+  });
+
+  describe("listChannels()", () => {
+    it("parses config.yaml platforms and returns enabled channels", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new HermesAdapter(tempDir, mockProbe);
+
+      // Setup: config with multiple platforms
+      const config = `platforms:
+  telegram:
+    enabled: true
+  slack:
+    enabled: false
+  discord:
+    enabled: true
+`;
+      await fs.writeFile(configPath, config, "utf-8");
+
+      const channels = await adapter.listChannels();
+
+      expect(channels).toHaveLength(3);
+      expect(channels).toContainEqual({ id: "telegram", enabled: true });
+      expect(channels).toContainEqual({ id: "slack", enabled: false });
+      expect(channels).toContainEqual({ id: "discord", enabled: true });
+    });
+
+    it("returns empty array when no platforms configured", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new HermesAdapter(tempDir, mockProbe);
+
+      // Setup: config without platforms section
+      const config = `model:
+  default: "llama3.2:3b"
+`;
+      await fs.writeFile(configPath, config, "utf-8");
+
+      const channels = await adapter.listChannels();
+
+      expect(channels).toEqual([]);
+    });
+
+    it("returns empty array when config.yaml does not exist", async () => {
+      const mockProbe = vi.fn().mockResolvedValue(true);
+      adapter = new HermesAdapter(tempDir, mockProbe);
+
+      // No config file created
+      const channels = await adapter.listChannels();
+
+      expect(channels).toEqual([]);
+    });
+  });
 });

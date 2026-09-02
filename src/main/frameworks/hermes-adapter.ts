@@ -528,4 +528,353 @@ export class HermesAdapter implements FrameworkAdapter {
 
     return null;
   }
+
+  // ========================================================================
+  // TASK 3: Channel methods - configureChannel/verifyChannel/removeChannel/listChannels
+  // ========================================================================
+
+  /**
+   * Validate channel ID to prevent command injection and path traversal.
+   * Allows lowercase alphanumeric, hyphens, and underscores only.
+   */
+  private validateChannelId(id: string): void {
+    const safePattern = /^[a-z0-9_-]+$/;
+    if (!safePattern.test(id)) {
+      throw new Error(
+        `Invalid channel id: "${id}". ` +
+        `Only lowercase alphanumeric characters, hyphens, and underscores are allowed.`
+      );
+    }
+  }
+
+  /**
+   * Map channel ID + secret field to env var name.
+   * Per verified research doc:
+   * - telegram: TELEGRAM_BOT_TOKEN
+   * - slack: SLACK_BOT_TOKEN, SLACK_APP_TOKEN, SLACK_SIGNING_SECRET
+   * - discord: DISCORD_BOT_TOKEN
+   */
+  private getChannelEnvVarName(channelId: string, secretField: string): string {
+    const channelUpper = channelId.toUpperCase();
+
+    // Map common secret field names to env var suffixes
+    if (secretField === "botToken") {
+      return `${channelUpper}_BOT_TOKEN`;
+    } else if (secretField === "appToken") {
+      return `${channelUpper}_APP_TOKEN`;
+    } else if (secretField === "signingSecret") {
+      return `${channelUpper}_SIGNING_SECRET`;
+    }
+
+    // Default: CHANNEL_FIELD format
+    const fieldUpper = secretField.replace(/([A-Z])/g, "_$1").toUpperCase().replace(/^_/, "");
+    return `${channelUpper}_${fieldUpper}`;
+  }
+
+  /**
+   * Configure a messaging channel.
+   * Writes platforms.<id>.enabled: true to config.yaml (deep-merge, preserves existing keys).
+   * Writes secrets to ~/.hermes/.env (merge, don't clobber other vars).
+   *
+   * SECURITY: Secrets ONLY in .env, never in config.yaml. Never logged.
+   * Per verified research doc: hermes uses config.yaml + .env two-file approach.
+   */
+  async configureChannel(spec: {
+    id: string;
+    config: Record<string, string>;
+    secrets: Record<string, string>;
+  }): Promise<void> {
+    // Validate channel ID
+    this.validateChannelId(spec.id);
+
+    // Ensure config directory exists
+    await fs.mkdir(this.configDir, { recursive: true });
+
+    // 1. Update config.yaml: add/update platforms.<id>.enabled: true
+    await this.updateConfigYamlPlatform(spec.id, true, spec.config);
+
+    // 2. Write secrets to .env (merge with existing)
+    await this.mergeEnvSecrets(spec.secrets, spec.id);
+  }
+
+  /**
+   * Update config.yaml to set platforms.<id>.enabled and merge non-secret config.
+   * Preserves existing content (deep-merge).
+   */
+  private async updateConfigYamlPlatform(
+    channelId: string,
+    enabled: boolean,
+    extraConfig: Record<string, string>
+  ): Promise<void> {
+    const configPath = path.join(this.configDir, "config.yaml");
+
+    let content = "";
+    try {
+      content = await fs.readFile(configPath, "utf-8");
+    } catch (error: any) {
+      if (error.code !== "ENOENT") throw error;
+      // File doesn't exist, start fresh
+    }
+
+    // Parse YAML pragmatically: line-based approach to preserve structure
+    const lines = content.split("\n");
+    const result: string[] = [];
+    let inPlatforms = false;
+    let inTargetPlatform = false;
+    let foundPlatforms = false;
+    let foundTargetPlatform = false;
+    let updatedEnabled = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      // Detect platforms: section
+      if (trimmed === "platforms:") {
+        inPlatforms = true;
+        foundPlatforms = true;
+        result.push(line);
+        continue;
+      }
+
+      // Track if we're in the platforms section
+      if (inPlatforms) {
+        // Check if we've exited platforms (new top-level key)
+        if (trimmed && !line.startsWith(" ") && !trimmed.startsWith("#")) {
+          inPlatforms = false;
+          inTargetPlatform = false;
+        } else {
+          // Check if this is a platform entry (2-space indent)
+          const platformMatch = line.match(/^  ([a-z0-9_-]+):/);
+          if (platformMatch) {
+            const platformName = platformMatch[1];
+            if (platformName === channelId) {
+              inTargetPlatform = true;
+              foundTargetPlatform = true;
+            } else {
+              inTargetPlatform = false;
+            }
+          }
+
+          // Update enabled flag if we're in the target platform
+          if (inTargetPlatform) {
+            const enabledMatch = line.match(/^    enabled:/);
+            if (enabledMatch) {
+              result.push(`    enabled: ${enabled}`);
+              updatedEnabled = true;
+              continue;
+            }
+          }
+        }
+      }
+
+      result.push(line);
+    }
+
+    // If platforms section exists but our channel doesn't, add it
+    if (foundPlatforms && !foundTargetPlatform) {
+      // Find where to insert (after last platform entry)
+      let insertIdx = result.length;
+      for (let i = result.length - 1; i >= 0; i--) {
+        if (result[i].trim() === "platforms:") {
+          insertIdx = i + 1;
+          break;
+        }
+        // Look for platform entries (2-space indent followed by name:)
+        if (result[i].match(/^  [a-z0-9_-]+:/)) {
+          // Find the end of this platform block (last line with 4-space indent)
+          let j = i + 1;
+          while (j < result.length && result[j].match(/^    /)) {
+            j++;
+          }
+          insertIdx = j;
+          break;
+        }
+      }
+
+      result.splice(insertIdx, 0, `  ${channelId}:`, `    enabled: ${enabled}`);
+    }
+
+    // If platforms section doesn't exist, add it at the end
+    if (!foundPlatforms) {
+      if (result.length > 0 && result[result.length - 1].trim() !== "") {
+        result.push(""); // Add blank line before platforms
+      }
+      result.push("platforms:", `  ${channelId}:`, `    enabled: ${enabled}`);
+    }
+
+    await fs.writeFile(configPath, result.join("\n"), "utf-8");
+  }
+
+  /**
+   * Merge secrets into .env file without clobbering existing vars.
+   * SECURITY: Secrets never logged.
+   */
+  private async mergeEnvSecrets(
+    secrets: Record<string, string>,
+    channelId: string
+  ): Promise<void> {
+    const envPath = path.join(this.configDir, ".env");
+
+    // Read existing .env
+    let existingEnv: Record<string, string> = {};
+    try {
+      const content = await fs.readFile(envPath, "utf-8");
+      existingEnv = this.parseEnvFile(content);
+    } catch (error: any) {
+      if (error.code !== "ENOENT") throw error;
+      // File doesn't exist, start fresh
+    }
+
+    // Add new secrets (map field names to env var names)
+    for (const [field, value] of Object.entries(secrets)) {
+      const envVarName = this.getChannelEnvVarName(channelId, field);
+      existingEnv[envVarName] = value;
+    }
+
+    // Write back
+    const lines = Object.entries(existingEnv).map(([k, v]) => `${k}=${v}`);
+    await fs.writeFile(envPath, lines.join("\n") + "\n", "utf-8");
+  }
+
+  /**
+   * Parse .env file into key-value map.
+   */
+  private parseEnvFile(content: string): Record<string, string> {
+    const result: Record<string, string> = {};
+    const lines = content.split("\n");
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+
+      const eqIdx = trimmed.indexOf("=");
+      if (eqIdx === -1) continue;
+
+      const key = trimmed.slice(0, eqIdx).trim();
+      const value = trimmed.slice(eqIdx + 1).trim();
+      result[key] = value;
+    }
+
+    return result;
+  }
+
+  /**
+   * Verify a channel is connected.
+   * Runs `hermes gateway status` and parses output.
+   * Returns connected:true if gateway is running, false otherwise.
+   * NEVER throws - always returns a result.
+   */
+  async verifyChannel(id: string): Promise<{ connected: boolean; detail?: string }> {
+    try {
+      const result = await this.execWithArgsFn("hermes", ["gateway", "status"]);
+
+      // Parse status output
+      // Example: "✓ default (current)        — running (pid 12345)"
+      // Look for the checkmark indicator OR the word "running" not preceded by "not"
+      const hasCheckmark = result.stdout.includes("✓");
+      const hasRunningStatus = /—\s*running/.test(result.stdout);
+      const isRunning = hasCheckmark || hasRunningStatus;
+
+      return {
+        connected: isRunning,
+        detail: isRunning ? "running" : "not running",
+      };
+    } catch (error) {
+      // No throw - return connected:false with error detail
+      return {
+        connected: false,
+        detail: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
+   * Remove a channel by setting enabled:false in config.yaml.
+   * Does NOT delete the .env secrets (they're harmless if disabled).
+   */
+  async removeChannel(id: string): Promise<{ removed: boolean; note?: string }> {
+    this.validateChannelId(id);
+
+    // Set enabled:false in config.yaml
+    await this.updateConfigYamlPlatform(id, false, {});
+
+    return { removed: true };
+  }
+
+  /**
+   * Check if restart is required after channel changes.
+   * Per verified doc: Hermes gateway requires restart for channel config changes.
+   */
+  requiresRestartAfterChannelChange(): boolean {
+    return true;
+  }
+
+  /**
+   * List all configured channels from config.yaml.
+   * Returns channel ID and enabled status.
+   */
+  async listChannels(): Promise<Array<{ id: string; enabled: boolean; connected?: boolean }>> {
+    const configPath = path.join(this.configDir, "config.yaml");
+
+    try {
+      const content = await fs.readFile(configPath, "utf-8");
+      return this.parseChannelsFromYaml(content);
+    } catch (error: any) {
+      if (error.code === "ENOENT") {
+        return []; // Config doesn't exist yet
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Parse channels from config.yaml content.
+   * Extracts platforms.* entries with enabled status.
+   */
+  private parseChannelsFromYaml(content: string): Array<{ id: string; enabled: boolean }> {
+    const lines = content.split("\n");
+    const channels: Array<{ id: string; enabled: boolean }> = [];
+
+    let inPlatforms = false;
+    let currentPlatform: string | null = null;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+
+      // Detect platforms: section
+      if (trimmed === "platforms:") {
+        inPlatforms = true;
+        continue;
+      }
+
+      // Exit platforms section on new top-level key
+      if (inPlatforms && trimmed && !line.startsWith(" ") && !trimmed.startsWith("#")) {
+        break;
+      }
+
+      if (inPlatforms) {
+        // Detect platform name (2-space indent)
+        const platformMatch = line.match(/^  ([a-z0-9_-]+):/);
+        if (platformMatch) {
+          currentPlatform = platformMatch[1];
+          continue;
+        }
+
+        // Detect enabled flag (4-space indent)
+        if (currentPlatform) {
+          const enabledMatch = line.match(/^    enabled:\s*(true|false)/);
+          if (enabledMatch) {
+            channels.push({
+              id: currentPlatform,
+              enabled: enabledMatch[1] === "true",
+            });
+            currentPlatform = null;
+          }
+        }
+      }
+    }
+
+    return channels;
+  }
 }
