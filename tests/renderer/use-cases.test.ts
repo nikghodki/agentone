@@ -99,19 +99,18 @@ describe("buildPrompt", () => {
     expect(result).not.toContain("  "); // No double space
   });
 
-  it("write-code use case with empty language keeps 'Explain how it works'", () => {
-    const writeCode = USE_CASES.find((uc) => uc.id === "write-code");
-    expect(writeCode).toBeDefined();
+  it("summarize use case assembles prompt correctly", () => {
+    const summarize = USE_CASES.find((uc) => uc.id === "summarize");
+    expect(summarize).toBeDefined();
 
-    const result = buildPrompt(writeCode!, {
-      task: "sort an array",
-      language: "",
+    const result = buildPrompt(summarize!, {
+      content: "Long article about AI developments...",
     });
 
-    expect(result).toContain("Explain how it works");
-    expect(result).not.toContain("{language}");
+    expect(result).toContain("Long article about AI developments");
+    expect(result).toContain("Summarize this for me");
+    expect(result).not.toContain("{content}");
     expect(result).not.toContain("  "); // No double space
-    expect(result).not.toMatch(/\s\./); // No space before period
   });
 
   it("preserves newlines and paragraph breaks in multiline content (Important 1)", () => {
@@ -162,19 +161,22 @@ describe("buildPrompt", () => {
     expect(result).not.toContain("]]");
   });
 
-  it("write-code with filled language reads correctly (Important 2)", () => {
-    const writeCode = USE_CASES.find((uc) => uc.id === "write-code");
-    expect(writeCode).toBeDefined();
+  it("reply-message use case with select field assembles correctly", () => {
+    const replyMessage = USE_CASES.find((uc) => uc.id === "reply-message");
+    expect(replyMessage).toBeDefined();
 
-    const result = buildPrompt(writeCode!, {
-      task: "sort an array",
-      language: "Python",
+    const result = buildPrompt(replyMessage!, {
+      message: "Can we meet tomorrow?",
+      intent: "say yes and suggest 2pm",
+      tone: "friendly",
     });
 
-    expect(result).toContain("Python");
-    expect(result).toContain("Explain how it works");
-    expect(result).not.toContain("code in in"); // No duplication
-    expect(result).not.toContain("codePython"); // Has space
+    expect(result).toContain("Can we meet tomorrow?");
+    expect(result).toContain("say yes and suggest 2pm");
+    expect(result).toContain("friendly");
+    expect(result).not.toContain("{message}");
+    expect(result).not.toContain("{intent}");
+    expect(result).not.toContain("{tone}");
   });
 });
 
@@ -249,7 +251,7 @@ describe("Per-framework tailored use cases", () => {
   it("browse-url tailored for hermes exists with correct structure", () => {
     const browseUrl = USE_CASES.find((uc) => uc.id === "browse-url");
     expect(browseUrl).toBeDefined();
-    expect(browseUrl!.title).toBe("Browse a live web page");
+    expect(browseUrl!.title).toBe("Look something up on a live website");
     expect(browseUrl!.category).toBe("research");
     expect(browseUrl!.frameworks).toEqual(["hermes"]);
     expect(browseUrl!.fields.length).toBe(2);
@@ -262,8 +264,8 @@ describe("Per-framework tailored use cases", () => {
   it("remember-info tailored for zeptoclaw exists with correct structure", () => {
     const rememberInfo = USE_CASES.find((uc) => uc.id === "remember-info");
     expect(rememberInfo).toBeDefined();
-    expect(rememberInfo!.title).toBe("Remember something for later");
-    expect(rememberInfo!.category).toBe("productivity");
+    expect(rememberInfo!.title).toBe("Remember this for me");
+    expect(rememberInfo!.category).toBe("personal");
     expect(rememberInfo!.frameworks).toEqual(["zeptoclaw"]);
     expect(rememberInfo!.fields.length).toBe(1);
     expect(rememberInfo!.fields[0].key).toBe("info");
@@ -273,8 +275,8 @@ describe("Per-framework tailored use cases", () => {
   it("terminal-task tailored for openclaw exists with correct structure", () => {
     const terminalTask = USE_CASES.find((uc) => uc.id === "terminal-task");
     expect(terminalTask).toBeDefined();
-    expect(terminalTask!.title).toBe("Automate a terminal task");
-    expect(terminalTask!.category).toBe("coding");
+    expect(terminalTask!.title).toBe("Get something done on my computer");
+    expect(terminalTask!.category).toBe("productivity");
     expect(terminalTask!.frameworks).toEqual(["openclaw"]);
     expect(terminalTask!.fields.length).toBe(1);
     expect(terminalTask!.fields[0].key).toBe("task");
