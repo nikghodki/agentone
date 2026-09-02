@@ -11,3 +11,4 @@ src/**/*.js
 src/**/*.d.ts
 src/**/*.d.ts.map
 src/**/*.js.map
+build/node22-bin/
