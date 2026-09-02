@@ -854,4 +854,176 @@ export class OpenclawAdapter implements FrameworkAdapter {
 
     return null;
   }
+
+  // ========================================================================
+  // TASK 2 (Phase 2a): Channel methods
+  // ========================================================================
+
+  /**
+   * Configure a messaging channel on openclaw.
+   * Per verified research (framework-messaging-channels.md):
+   * - Uses `openclaw channels add --channel <id> --use-env` (RECOMMENDED approach)
+   * - Injects secrets via environment variables (keeps tokens out of config file)
+   * - Uses sandboxed Node-22 env with explicit PATH
+   *
+   * SECURITY: Two-layer defense:
+   * 1. Validates channel id against strict pattern
+   * 2. Uses argument array (execFile) + env injection
+   * 3. Token NEVER logged or written to config
+   */
+  async configureChannel(spec: {
+    id: string;
+    config: Record<string, string>;
+    secrets: Record<string, string>;
+  }): Promise<void> {
+    // Validate channel id (defense-in-depth)
+    this.validateCapabilityName(spec.id);
+
+    const bin = this.getOpenclawBinary();
+    const env = this.buildSandboxedEnv();
+
+    // Inject secrets into env based on channel type
+    this.injectChannelSecrets(env, spec.id, spec.secrets);
+
+    // Run channels add with --use-env (secrets injected via env, not written to config)
+    await this.execWithArgsFn(bin, ["channels", "add", "--channel", spec.id, "--use-env"], { env });
+  }
+
+  /**
+   * Inject channel secrets into environment based on channel type.
+   * Maps generic secret names to channel-specific env var names.
+   */
+  private injectChannelSecrets(
+    env: Record<string, string>,
+    channelId: string,
+    secrets: Record<string, string>
+  ): void {
+    const channelUpper = channelId.toUpperCase();
+
+    // Map secret keys to env var names based on channel conventions
+    if (secrets.botToken) {
+      env[`${channelUpper}_BOT_TOKEN`] = secrets.botToken;
+    }
+    if (secrets.signingSecret) {
+      env[`${channelUpper}_SIGNING_SECRET`] = secrets.signingSecret;
+    }
+    if (secrets.appToken) {
+      env[`${channelUpper}_APP_TOKEN`] = secrets.appToken;
+    }
+    // Add other secret mappings as needed for future channels
+  }
+
+  /**
+   * Verify a channel is connected by running a probe.
+   * Per verified research: `openclaw channels status --channel <id> --probe`
+   *
+   * Returns {connected: boolean, detail?: string}.
+   * Does NOT throw on probe failure - returns connected:false instead.
+   */
+  async verifyChannel(id: string): Promise<{ connected: boolean; detail?: string }> {
+    this.validateCapabilityName(id);
+
+    const bin = this.getOpenclawBinary();
+    const env = this.buildSandboxedEnv();
+
+    try {
+      const result = await this.execWithArgsFn(
+        bin,
+        ["channels", "status", "--channel", id, "--probe"],
+        { env }
+      );
+
+      // Parse output to determine connection status
+      const output = result.stdout.toLowerCase();
+      const isConnected = output.includes("connected") || output.includes("successful");
+
+      return {
+        connected: isConnected,
+        detail: result.stdout.trim(),
+      };
+    } catch (error) {
+      // Don't throw on probe failure - return connected:false with error detail
+      return {
+        connected: false,
+        detail: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
+   * Remove a channel from openclaw.
+   * Per verified research: `openclaw channels remove --channel <id> --delete`
+   */
+  async removeChannel(id: string): Promise<{ removed: boolean; note?: string }> {
+    this.validateCapabilityName(id);
+
+    const bin = this.getOpenclawBinary();
+    const env = this.buildSandboxedEnv();
+
+    await this.execWithArgsFn(bin, ["channels", "remove", "--channel", id, "--delete"], { env });
+
+    return { removed: true };
+  }
+
+  /**
+   * List all configured channels.
+   * Per verified research: `openclaw channels list`
+   * Parses box-drawing table format (similar to listCapabilities).
+   */
+  async listChannels(): Promise<Array<{ id: string; enabled: boolean; connected?: boolean }>> {
+    const bin = this.getOpenclawBinary();
+    const env = this.buildSandboxedEnv();
+
+    try {
+      const result = await this.execWithArgsFn(bin, ["channels", "list"], { env });
+
+      // Handle "No channels configured" message
+      if (result.stdout.includes("No channels configured")) {
+        return [];
+      }
+
+      // Parse table format
+      const channels: Array<{ id: string; enabled: boolean; connected?: boolean }> = [];
+      const lines = result.stdout.split("\n");
+
+      for (const line of lines) {
+        // Skip non-data rows: borders, header
+        if (!line.includes("│")) continue;
+        if (line.includes("Channel") || line.includes("Status")) continue;
+
+        // Split on column separator
+        const columns = line.split("│").map(col => col.trim());
+
+        // Need at least 3 columns: empty, channel, status, connected
+        if (columns.length < 4) continue;
+
+        const channelId = columns[1];
+        const status = columns[2];
+        const connectedStr = columns[3];
+
+        // Skip if channel name is empty (continuation row)
+        if (!channelId) continue;
+
+        channels.push({
+          id: channelId,
+          enabled: status.toLowerCase().includes("enabled"),
+          connected: connectedStr.toLowerCase().includes("yes"),
+        });
+      }
+
+      return channels;
+    } catch (error) {
+      // If command fails, return empty array
+      return [];
+    }
+  }
+
+  /**
+   * Check if gateway restart is required after channel configuration changes.
+   * Per verified research: openclaw gateway restart IS required after channel changes.
+   * (Unlike capability hot-reload, channels require a full gateway restart)
+   */
+  requiresRestartAfterChannelChange(): boolean {
+    return true;
+  }
 }
