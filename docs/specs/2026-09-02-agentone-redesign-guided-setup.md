@@ -10,7 +10,7 @@
 
 A modern, professional, **light & approachable** desktop UX with a single **guided setup wizard** that walks a user from "nothing" to "a deployed agent they can talk to." Delivered in phases:
 
-- **Phase 1 (this spec): DELIVERED (2026-09-02)** — light design system + UI kit; guided wizard steps **1–6** (framework → config → model{local|cloud} → deploy) and **10** (switch/remove framework). Deferral: step-2 Advanced (persona/system-prompt, gateway port) is collected in the wizard but **not yet applied at deploy** (the adapter `configure()`/`deployFramework` path doesn't accept those params) — a follow-up; the default (no-advanced) path is unaffected.
+- **Phase 1 (this spec): DELIVERED (2026-09-02)** — light design system + UI kit; guided wizard steps **1–6** (framework → config → model{local|cloud} → deploy) and **10** (switch/remove framework). **UPDATE 2026-09-02:** Step-2 Advanced (persona → SOUL.md, gateway port → gateway.port) is now **applied at deploy** via `FrameworkDeployOptions` (persona: all 3 frameworks; gatewayPort: openclaw+zeptoclaw; hermes port intentionally no-op per verified config).
 - **Phase 2 (later):** messaging-channel setup (steps 7–8).
 - **Phase 3 (later):** use-case prompt generator (step 9).
 

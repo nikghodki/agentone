@@ -117,7 +117,7 @@ export interface ElectronAPI {
   getLicenseStatus: () => Promise<"free" | "pro" | "expired">;
   activateLicense: (key: string) => Promise<boolean>;
 
-  deployFramework: (frameworkId: string, modelBackendId: string) => Promise<Deployment>;
+  deployFramework: (frameworkId: string, modelBackendId: string, options?: import("./v2-types").FrameworkDeployOptions) => Promise<Deployment>;
   sendTask: (deploymentId: string, input: string) => Promise<string>;
   getDeployments: () => Promise<Deployment[]>;
   onTaskToken: (callback: (token: string) => void) => () => void;

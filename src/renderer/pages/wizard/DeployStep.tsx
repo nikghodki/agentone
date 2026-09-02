@@ -11,6 +11,7 @@ export function DeployStep() {
   const selectedFrameworkId = useAppStore((s) => s.selectedFrameworkId);
   const modelBackendDraft = useAppStore((s) => s.modelBackendDraft);
   const cloudForm = useAppStore((s) => s.cloudForm);
+  const frameworkConfig = useAppStore((s) => s.frameworkConfig);
   const setModelBackendId = useAppStore((s) => s.setModelBackendId);
   const setCurrentDeploymentId = useAppStore((s) => s.setCurrentDeploymentId);
   const setWizardStep = useAppStore((s) => s.setWizardStep);
@@ -46,9 +47,21 @@ export function DeployStep() {
 
       // Step 3: Deploy the framework with the model backend
       setProgressLabel(`Deploying ${selectedFrameworkId}...`);
+
+      // Build advanced options from frameworkConfig (Task 6)
+      const advanced: import("@shared/v2-types").FrameworkDeployOptions = {};
+      if (frameworkConfig.persona?.trim()) {
+        advanced.persona = frameworkConfig.persona;
+      }
+      if (typeof frameworkConfig.port === "number") {
+        advanced.gatewayPort = frameworkConfig.port; // map port -> gatewayPort
+      }
+      const opts = Object.keys(advanced).length > 0 ? advanced : undefined;
+
       const deployment = await window.electronAPI.deployFramework(
         selectedFrameworkId,
-        backendId
+        backendId,
+        opts
       );
 
       // Step 4: Update store and navigate to channel step

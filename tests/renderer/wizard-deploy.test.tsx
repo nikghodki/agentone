@@ -81,8 +81,8 @@ describe("DeployStep", () => {
       "sk-ant-test-key"
     );
 
-    // Should then call deployFramework with the framework ID and backend ID
-    expect(mockDeployFramework).toHaveBeenCalledWith("zeptoclaw", "backend-id-123");
+    // Should then call deployFramework with the framework ID, backend ID, and options (undefined when no frameworkConfig)
+    expect(mockDeployFramework).toHaveBeenCalledWith("zeptoclaw", "backend-id-123", undefined);
 
     // Should update store state
     const state = useAppStore.getState();
@@ -156,6 +156,150 @@ describe("DeployStep", () => {
     // Should show retry button
     const retryButton = screen.getByRole("button", { name: /Retry/i });
     expect(retryButton).toBeTruthy();
+
+    unmount();
+  });
+
+  it("passes persona and port from frameworkConfig as options (Task 6)", async () => {
+    const { DeployStep } = await import("../../src/renderer/pages/wizard/DeployStep");
+
+    // Set frameworkConfig with persona and port
+    useAppStore.setState({
+      wizardStep: "deploy",
+      selectedFrameworkId: "zeptoclaw",
+      frameworkConfig: { persona: "You are a helpful ops bot.", port: 8090 },
+      modelBackendDraft: {
+        kind: "cloud",
+        provider: "anthropic",
+        baseUrl: null,
+        protocol: "v1/messages",
+        model: "claude-3-5-sonnet-20241022",
+        extra: null,
+      },
+      cloudForm: {
+        apiKey: "sk-ant-test-key",
+        resourceUrl: "",
+        deployment: "",
+        apiVersion: "",
+        region: "",
+        accessKeyId: "",
+        secretAccessKey: "",
+        modelPath: "",
+      },
+    });
+
+    mockSaveModelBackend.mockResolvedValue("backend-id-123");
+    mockDeployFramework.mockResolvedValue({ id: "deployment-id-456" });
+
+    const { unmount } = render(<DeployStep />);
+
+    const deployButton = screen.getByRole("button", { name: /Install & Deploy/i });
+    fireEvent.click(deployButton);
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // Should call deployFramework with options mapping port → gatewayPort
+    expect(mockDeployFramework).toHaveBeenCalledWith(
+      "zeptoclaw",
+      "backend-id-123",
+      { persona: "You are a helpful ops bot.", gatewayPort: 8090 }
+    );
+
+    unmount();
+  });
+
+  it("passes undefined when frameworkConfig is empty (Task 6)", async () => {
+    const { DeployStep } = await import("../../src/renderer/pages/wizard/DeployStep");
+
+    // Empty frameworkConfig
+    useAppStore.setState({
+      wizardStep: "deploy",
+      selectedFrameworkId: "openclaw",
+      frameworkConfig: {},
+      modelBackendDraft: {
+        kind: "cloud",
+        provider: "anthropic",
+        baseUrl: null,
+        protocol: "v1/messages",
+        model: "claude-3-5-sonnet-20241022",
+        extra: null,
+      },
+      cloudForm: {
+        apiKey: "sk-ant-test-key",
+        resourceUrl: "",
+        deployment: "",
+        apiVersion: "",
+        region: "",
+        accessKeyId: "",
+        secretAccessKey: "",
+        modelPath: "",
+      },
+    });
+
+    mockSaveModelBackend.mockResolvedValue("backend-id-789");
+    mockDeployFramework.mockResolvedValue({ id: "deployment-id-999" });
+
+    const { unmount } = render(<DeployStep />);
+
+    const deployButton = screen.getByRole("button", { name: /Install & Deploy/i });
+    fireEvent.click(deployButton);
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // Should call deployFramework with undefined (no empty object)
+    expect(mockDeployFramework).toHaveBeenCalledWith(
+      "openclaw",
+      "backend-id-789",
+      undefined
+    );
+
+    unmount();
+  });
+
+  it("handles whitespace-only persona as undefined (Task 6)", async () => {
+    const { DeployStep } = await import("../../src/renderer/pages/wizard/DeployStep");
+
+    // Whitespace-only persona
+    useAppStore.setState({
+      wizardStep: "deploy",
+      selectedFrameworkId: "hermes",
+      frameworkConfig: { persona: "   ", port: undefined },
+      modelBackendDraft: {
+        kind: "cloud",
+        provider: "anthropic",
+        baseUrl: null,
+        protocol: "v1/messages",
+        model: "claude-3-5-sonnet-20241022",
+        extra: null,
+      },
+      cloudForm: {
+        apiKey: "sk-ant-test-key",
+        resourceUrl: "",
+        deployment: "",
+        apiVersion: "",
+        region: "",
+        accessKeyId: "",
+        secretAccessKey: "",
+        modelPath: "",
+      },
+    });
+
+    mockSaveModelBackend.mockResolvedValue("backend-id-333");
+    mockDeployFramework.mockResolvedValue({ id: "deployment-id-444" });
+
+    const { unmount } = render(<DeployStep />);
+
+    const deployButton = screen.getByRole("button", { name: /Install & Deploy/i });
+    fireEvent.click(deployButton);
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // Should not pass persona (whitespace trimmed to empty)
+    expect(mockDeployFramework).toHaveBeenCalledWith(
+      "hermes",
+      "backend-id-333",
+      undefined
+    );
 
     unmount();
   });

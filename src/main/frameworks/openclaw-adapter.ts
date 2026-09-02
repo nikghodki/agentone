@@ -211,7 +211,7 @@ export class OpenclawAdapter implements FrameworkAdapter {
    * Uses JSON.stringify for escaping (handles special characters automatically).
    * Idempotent (deep-merge preserves unrelated keys).
    */
-  async configure(backend: ModelBackendConfig): Promise<void> {
+  async configure(backend: ModelBackendConfig, options?: import("../../shared/v2-types").FrameworkDeployOptions): Promise<void> {
     // Store backend for use in start() (Task 2)
     this.currentBackend = backend;
 
@@ -237,8 +237,9 @@ export class OpenclawAdapter implements FrameworkAdapter {
     const builtPlugins = built.plugins as any;
     const existingAgents = existing.agents as any;
     const existingPlugins = existing.plugins as any;
+    const existingGateway = existing.gateway as any;
 
-    const merged = {
+    const merged: Record<string, any> = {
       ...existing,
       // PART 1: Replace models.providers (model backend config)
       models: built.models,
@@ -266,7 +267,26 @@ export class OpenclawAdapter implements FrameworkAdapter {
       },
     };
 
+    // Apply gateway.port if valid (deep-merge with existing gateway keys)
+    if (options?.gatewayPort !== undefined) {
+      const port = Math.floor(options.gatewayPort);
+      if (Number.isFinite(port) && port >= 1 && port <= 65535) {
+        merged.gateway = {
+          ...(existingGateway || {}),
+          port,
+        };
+      }
+    }
+
     await fs.writeFile(configPath, JSON.stringify(merged, null, 2), "utf-8");
+
+    // Apply persona to workspace/SOUL.md if provided and non-empty
+    if (options?.persona?.trim()) {
+      const workspaceDir = path.join(this.configDir, "workspace");
+      await fs.mkdir(workspaceDir, { recursive: true });
+      const personaPath = path.join(workspaceDir, "SOUL.md");
+      await fs.writeFile(personaPath, options.persona, "utf-8");
+    }
   }
 
   /**

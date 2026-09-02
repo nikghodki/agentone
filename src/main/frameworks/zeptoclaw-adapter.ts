@@ -145,15 +145,26 @@ export class ZeptoclawAdapter implements FrameworkAdapter {
    *
    * SECURITY: Never writes secrets - those are injected via env at start (Task 3).
    */
-  async configure(backend: ModelBackendConfig): Promise<void> {
+  async configure(backend: ModelBackendConfig, options?: import("../../shared/v2-types").FrameworkDeployOptions): Promise<void> {
     // Store backend for use in start()
     this.currentBackend = backend;
 
     // Ensure config directory exists
     await fs.mkdir(this.configDir, { recursive: true });
 
+    // Read existing config if it exists (for deep-merge)
+    const configPath = path.join(this.configDir, "config.json");
+    let existingConfig: Record<string, any> = {};
+    try {
+      const existingContent = await fs.readFile(configPath, "utf-8");
+      existingConfig = JSON.parse(existingContent);
+    } catch (error) {
+      // File doesn't exist or is invalid, start fresh
+    }
+
     // Map ModelBackendConfig to zeptoclaw config format
     const config: Record<string, unknown> = {
+      ...existingConfig,
       agents: {
         defaults: {
           model: backend.model,
@@ -162,8 +173,26 @@ export class ZeptoclawAdapter implements FrameworkAdapter {
       providers: this.buildProviderConfig(backend),
     };
 
-    const configPath = path.join(this.configDir, "config.json");
+    // Apply gateway.port if valid
+    if (options?.gatewayPort !== undefined) {
+      const port = Math.floor(options.gatewayPort);
+      if (Number.isFinite(port) && port >= 1 && port <= 65535) {
+        config.gateway = {
+          ...(existingConfig.gateway || {}),
+          port,
+        };
+      }
+    }
+
     await fs.writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
+
+    // Apply persona to workspace/SOUL.md if provided and non-empty
+    if (options?.persona?.trim()) {
+      const workspaceDir = path.join(this.configDir, "workspace");
+      await fs.mkdir(workspaceDir, { recursive: true });
+      const personaPath = path.join(workspaceDir, "SOUL.md");
+      await fs.writeFile(personaPath, options.persona, "utf-8");
+    }
   }
 
   /**

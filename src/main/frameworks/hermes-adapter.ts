@@ -140,7 +140,7 @@ export class HermesAdapter implements FrameworkAdapter {
    *
    * SECURITY: Never writes secrets - those are injected via env at start (Task 2).
    */
-  async configure(backend: ModelBackendConfig): Promise<void> {
+  async configure(backend: ModelBackendConfig, options?: import("../../shared/v2-types").FrameworkDeployOptions): Promise<void> {
     // Store backend for use in start()
     this.currentBackend = backend;
 
@@ -152,6 +152,14 @@ export class HermesAdapter implements FrameworkAdapter {
 
     const configPath = path.join(this.configDir, "config.yaml");
     await fs.writeFile(configPath, yamlContent, "utf-8");
+
+    // hermes 'gateway' is the OAuth Tool Gateway; messaging is per-platforms.* — no verified bind-port key, so gatewayPort is intentionally ignored.
+
+    // Apply persona to SOUL.md if provided and non-empty
+    if (options?.persona?.trim()) {
+      const personaPath = path.join(this.configDir, "SOUL.md");
+      await fs.writeFile(personaPath, options.persona, "utf-8");
+    }
   }
 
   /**
