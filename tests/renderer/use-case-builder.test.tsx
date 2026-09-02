@@ -5,6 +5,17 @@ import React from "react";
 
 // Mock clipboard API
 const mockWriteText = vi.fn();
+
+// Mock the store
+const mockStoreState = { selectedFrameworkId: "zeptoclaw" };
+const mockUseAppStore = vi.fn((selector: any) =>
+  selector ? selector(mockStoreState) : mockStoreState
+);
+
+vi.mock("../../src/renderer/store", () => ({
+  useAppStore: (selector?: any) => mockUseAppStore(selector),
+}));
+
 beforeEach(() => {
   vi.clearAllMocks();
   Object.assign(navigator, {
@@ -13,6 +24,9 @@ beforeEach(() => {
     },
   });
   mockWriteText.mockResolvedValue(undefined);
+
+  // Default mock for store (zeptoclaw framework)
+  mockStoreState.selectedFrameworkId = "zeptoclaw";
 });
 
 describe("UseCaseBuilder", () => {
@@ -234,6 +248,109 @@ describe("UseCaseBuilder", () => {
     await waitFor(() => {
       const copyButton = screen.getByRole("button", { name: /copy/i }) as HTMLButtonElement;
       expect(copyButton.disabled).toBe(false);
+    });
+  });
+});
+
+describe("UseCaseBuilder framework filtering", () => {
+  it("with framework=hermes, shows browse-url and NOT remember-info/terminal-task", async () => {
+    // Mock the store to return hermes as selected framework
+    mockStoreState.selectedFrameworkId = "hermes";
+
+    const { UseCaseBuilder } = await import(
+      "../../src/renderer/components/UseCaseBuilder"
+    );
+
+    render(<UseCaseBuilder />);
+
+    // Should show browse-url (hermes-specific)
+    await waitFor(() => {
+      expect(screen.getByText(/Browse a live web page/i)).toBeTruthy();
+    });
+
+    // Should still show universal cases
+    expect(screen.getByText(/Research a topic/i)).toBeTruthy();
+
+    // Should NOT show other framework-specific cases
+    expect(screen.queryByText(/Remember something for later/i)).toBeNull();
+    expect(screen.queryByText(/Automate a terminal task/i)).toBeNull();
+  });
+
+  it("with framework=zeptoclaw, shows remember-info and NOT browse-url/terminal-task", async () => {
+    // Mock the store to return zeptoclaw as selected framework
+    mockStoreState.selectedFrameworkId = "zeptoclaw";
+
+    const { UseCaseBuilder } = await import(
+      "../../src/renderer/components/UseCaseBuilder"
+    );
+
+    render(<UseCaseBuilder />);
+
+    // Should show remember-info (zeptoclaw-specific)
+    await waitFor(() => {
+      expect(screen.getByText(/Remember something for later/i)).toBeTruthy();
+    });
+
+    // Should still show universal cases
+    expect(screen.getByText(/Research a topic/i)).toBeTruthy();
+
+    // Should NOT show other framework-specific cases
+    expect(screen.queryByText(/Browse a live web page/i)).toBeNull();
+    expect(screen.queryByText(/Automate a terminal task/i)).toBeNull();
+  });
+
+  it("with framework=openclaw, shows terminal-task and NOT browse-url/remember-info", async () => {
+    // Mock the store to return openclaw as selected framework
+    mockStoreState.selectedFrameworkId = "openclaw";
+
+    const { UseCaseBuilder } = await import(
+      "../../src/renderer/components/UseCaseBuilder"
+    );
+
+    render(<UseCaseBuilder />);
+
+    // Should show terminal-task (openclaw-specific)
+    await waitFor(() => {
+      expect(screen.getByText(/Automate a terminal task/i)).toBeTruthy();
+    });
+
+    // Should still show universal cases
+    expect(screen.getByText(/Research a topic/i)).toBeTruthy();
+
+    // Should NOT show other framework-specific cases
+    expect(screen.queryByText(/Browse a live web page/i)).toBeNull();
+    expect(screen.queryByText(/Remember something for later/i)).toBeNull();
+  });
+
+  it("picking a tailored card renders its fields and preview (no regression)", async () => {
+    // Mock the store to return hermes as selected framework
+    mockStoreState.selectedFrameworkId = "hermes";
+
+    const { UseCaseBuilder } = await import(
+      "../../src/renderer/components/UseCaseBuilder"
+    );
+
+    render(<UseCaseBuilder />);
+
+    // Pick the browse-url card
+    const browseCard = screen
+      .getByText(/Browse a live web page/i)
+      .closest("[role='radio']");
+    fireEvent.click(browseCard!);
+
+    // Should show the fields for this use case
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Page URL/i)).toBeTruthy();
+      expect(screen.getByLabelText(/What should the agent do/i)).toBeTruthy();
+    });
+
+    // Fill in a field
+    const urlInput = screen.getByLabelText(/Page URL/i) as HTMLInputElement;
+    fireEvent.change(urlInput, { target: { value: "https://example.com" } });
+
+    // Should show live preview
+    await waitFor(() => {
+      expect(screen.getByText(/https:\/\/example\.com/i)).toBeTruthy();
     });
   });
 });
