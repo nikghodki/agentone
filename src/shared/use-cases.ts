@@ -14,6 +14,7 @@ export interface UseCase {
   category: string;
   fields: UseCaseField[];
   template: string;
+  frameworks?: string[];  // absent/empty = universal (shown for all frameworks)
 }
 
 export const USE_CASES: UseCase[] = [
@@ -238,6 +239,60 @@ export const USE_CASES: UseCase[] = [
     ],
     template: "Based on these notes:\n\n{notes}\n\nAnswer: {question}",
   },
+  {
+    id: "browse-url",
+    title: "Browse a live web page",
+    description: "Open and interact with web pages using browser tools",
+    category: "research",
+    fields: [
+      {
+        key: "url",
+        label: "Page URL",
+        type: "text",
+        placeholder: "https://…",
+      },
+      {
+        key: "task",
+        label: "What should the agent do?",
+        type: "textarea",
+        placeholder: "e.g. summarize the pricing tiers",
+      },
+    ],
+    template: "Open the web page at {url} and {task}. Summarize what you find with the key details.",
+    frameworks: ["hermes"],
+  },
+  {
+    id: "remember-info",
+    title: "Remember something for later",
+    description: "Store information in long-term memory",
+    category: "productivity",
+    fields: [
+      {
+        key: "info",
+        label: "What to remember",
+        type: "textarea",
+        placeholder: "e.g. My project deadline is Oct 3",
+      },
+    ],
+    template: "Remember the following for future reference: {info}. Store it in your long-term memory and confirm.",
+    frameworks: ["zeptoclaw"],
+  },
+  {
+    id: "terminal-task",
+    title: "Automate a terminal task",
+    description: "Execute terminal commands to accomplish tasks",
+    category: "coding",
+    fields: [
+      {
+        key: "task",
+        label: "Terminal task",
+        type: "textarea",
+        placeholder: "e.g. find and delete all .tmp files in ~/downloads",
+      },
+    ],
+    template: "Using your terminal tool, {task}. Show the commands you run and the result.",
+    frameworks: ["openclaw"],
+  },
 ];
 
 export function buildPrompt(
@@ -295,4 +350,15 @@ export function buildPrompt(
     .trim();
 
   return result;
+}
+
+export function useCasesForFramework(frameworkId: string): UseCase[] {
+  return USE_CASES.filter((uc) => {
+    // Universal cases (no frameworks field or empty array) are shown for all frameworks
+    if (!uc.frameworks || uc.frameworks.length === 0) {
+      return true;
+    }
+    // Framework-specific cases are shown only for that framework
+    return uc.frameworks.includes(frameworkId);
+  });
 }

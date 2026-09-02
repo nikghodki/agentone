@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { USE_CASES, buildPrompt, UseCase } from "../../src/shared/use-cases";
+import { USE_CASES, buildPrompt, UseCase, useCasesForFramework } from "../../src/shared/use-cases";
 
 describe("buildPrompt", () => {
   const sampleUseCase: UseCase = {
@@ -179,9 +179,9 @@ describe("buildPrompt", () => {
 });
 
 describe("USE_CASES catalog", () => {
-  it("has approximately 10 entries", () => {
-    expect(USE_CASES.length).toBeGreaterThanOrEqual(8);
-    expect(USE_CASES.length).toBeLessThanOrEqual(12);
+  it("has approximately 13 entries (10 universal + 3 tailored)", () => {
+    expect(USE_CASES.length).toBeGreaterThanOrEqual(10);
+    expect(USE_CASES.length).toBeLessThanOrEqual(15);
   });
 
   it("each use case has required fields", () => {
@@ -228,5 +228,122 @@ describe("USE_CASES catalog", () => {
         }
       });
     });
+  });
+});
+
+describe("Per-framework tailored use cases", () => {
+  it("catalog has 13 use cases (10 universal + 3 tailored)", () => {
+    expect(USE_CASES.length).toBe(13);
+  });
+
+  it("first 10 use cases have NO frameworks field (universal)", () => {
+    const first10 = USE_CASES.slice(0, 10);
+    first10.forEach((uc) => {
+      expect(
+        uc.frameworks === undefined || uc.frameworks.length === 0,
+        `Use case "${uc.id}" should be universal (no frameworks field)`
+      ).toBe(true);
+    });
+  });
+
+  it("browse-url tailored for hermes exists with correct structure", () => {
+    const browseUrl = USE_CASES.find((uc) => uc.id === "browse-url");
+    expect(browseUrl).toBeDefined();
+    expect(browseUrl!.title).toBe("Browse a live web page");
+    expect(browseUrl!.category).toBe("research");
+    expect(browseUrl!.frameworks).toEqual(["hermes"]);
+    expect(browseUrl!.fields.length).toBe(2);
+    expect(browseUrl!.fields[0].key).toBe("url");
+    expect(browseUrl!.fields[1].key).toBe("task");
+    expect(browseUrl!.template).toContain("{url}");
+    expect(browseUrl!.template).toContain("{task}");
+  });
+
+  it("remember-info tailored for zeptoclaw exists with correct structure", () => {
+    const rememberInfo = USE_CASES.find((uc) => uc.id === "remember-info");
+    expect(rememberInfo).toBeDefined();
+    expect(rememberInfo!.title).toBe("Remember something for later");
+    expect(rememberInfo!.category).toBe("productivity");
+    expect(rememberInfo!.frameworks).toEqual(["zeptoclaw"]);
+    expect(rememberInfo!.fields.length).toBe(1);
+    expect(rememberInfo!.fields[0].key).toBe("info");
+    expect(rememberInfo!.template).toContain("{info}");
+  });
+
+  it("terminal-task tailored for openclaw exists with correct structure", () => {
+    const terminalTask = USE_CASES.find((uc) => uc.id === "terminal-task");
+    expect(terminalTask).toBeDefined();
+    expect(terminalTask!.title).toBe("Automate a terminal task");
+    expect(terminalTask!.category).toBe("coding");
+    expect(terminalTask!.frameworks).toEqual(["openclaw"]);
+    expect(terminalTask!.fields.length).toBe(1);
+    expect(terminalTask!.fields[0].key).toBe("task");
+    expect(terminalTask!.template).toContain("{task}");
+  });
+
+  it("useCasesForFramework(hermes) returns universal + browse-url only", () => {
+    const result = useCasesForFramework("hermes");
+
+    // Should include all 10 universal cases
+    expect(result.length).toBe(11);
+
+    // Should include browse-url
+    const hasBrowseUrl = result.some((uc) => uc.id === "browse-url");
+    expect(hasBrowseUrl).toBe(true);
+
+    // Should NOT include the other tailored cases
+    const hasRememberInfo = result.some((uc) => uc.id === "remember-info");
+    const hasTerminalTask = result.some((uc) => uc.id === "terminal-task");
+    expect(hasRememberInfo).toBe(false);
+    expect(hasTerminalTask).toBe(false);
+  });
+
+  it("useCasesForFramework(zeptoclaw) returns universal + remember-info only", () => {
+    const result = useCasesForFramework("zeptoclaw");
+
+    // Should include all 10 universal + 1 tailored
+    expect(result.length).toBe(11);
+
+    // Should include remember-info
+    const hasRememberInfo = result.some((uc) => uc.id === "remember-info");
+    expect(hasRememberInfo).toBe(true);
+
+    // Should NOT include the other tailored cases
+    const hasBrowseUrl = result.some((uc) => uc.id === "browse-url");
+    const hasTerminalTask = result.some((uc) => uc.id === "terminal-task");
+    expect(hasBrowseUrl).toBe(false);
+    expect(hasTerminalTask).toBe(false);
+  });
+
+  it("useCasesForFramework(openclaw) returns universal + terminal-task only", () => {
+    const result = useCasesForFramework("openclaw");
+
+    // Should include all 10 universal + 1 tailored
+    expect(result.length).toBe(11);
+
+    // Should include terminal-task
+    const hasTerminalTask = result.some((uc) => uc.id === "terminal-task");
+    expect(hasTerminalTask).toBe(true);
+
+    // Should NOT include the other tailored cases
+    const hasBrowseUrl = result.some((uc) => uc.id === "browse-url");
+    const hasRememberInfo = result.some((uc) => uc.id === "remember-info");
+    expect(hasBrowseUrl).toBe(false);
+    expect(hasRememberInfo).toBe(false);
+  });
+
+  it("useCasesForFramework(unknown) returns only the 10 universal cases", () => {
+    const result = useCasesForFramework("unknown-framework");
+
+    // Should only include universal cases
+    expect(result.length).toBe(10);
+
+    // Should NOT include any tailored cases
+    const hasBrowseUrl = result.some((uc) => uc.id === "browse-url");
+    const hasRememberInfo = result.some((uc) => uc.id === "remember-info");
+    const hasTerminalTask = result.some((uc) => uc.id === "terminal-task");
+    expect(hasBrowseUrl).toBe(false);
+    expect(hasRememberInfo).toBe(false);
+    expect(hasTerminalTask).toBe(false);
   });
 });
