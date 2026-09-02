@@ -6,7 +6,7 @@ import { Database } from "./database";
 import { RateLimiter } from "./rate-limiter";
 import { Secrets } from "./secrets";
 import { registerIpcHandlers, shutdownServices } from "./ipc-handlers";
-import { getAppPaths } from "./paths";
+import { getAppPaths, resolveBundledNode22BinDir } from "./paths";
 import { seedFrameworkRegistry } from "./framework-registry";
 
 let mainWindow: BrowserWindow | null = null;
@@ -51,6 +51,15 @@ function createWindow() {
 
 app.whenReady().then(() => {
   try {
+  // In packaged builds, use bundled Node 22 for openclaw if available
+  if (app.isPackaged && !process.env.OPENCLAW_NODE22_BIN_DIR) {
+    const bundledNode22Dir = resolveBundledNode22BinDir();
+    if (bundledNode22Dir) {
+      process.env.OPENCLAW_NODE22_BIN_DIR = bundledNode22Dir;
+      console.log(`Using bundled Node 22: ${bundledNode22Dir}`);
+    }
+  }
+
   const paths = getAppPaths();
   fs.mkdirSync(paths.models, { recursive: true });
 

@@ -26,14 +26,36 @@ files:
 asarUnpack:
   - node_modules/better-sqlite3/**/*
 
+# Bundle the Node 22 binary for openclaw (the staging script populates build/node22-bin/)
+extraResources:
+  - from: build/node22-bin
+    to: node22-bin
+    filter:
+      - "**/*"
+
 mac:
   category: public.app-category.productivity
-  # Unsigned local build (no Apple Developer cert). Signing/notarization + a
-  # hardened runtime are a later step for public distribution.
+  icon: build/icon.icns
+  # Unsigned local build (no Apple Developer cert). Signing/notarization are
+  # gated on env vars — set CSC_LINK/CSC_KEY_PASSWORD + Apple ID credentials to enable.
+  # By default (no env), identity: null disables signing so the build succeeds locally.
   identity: null
+  # Signing + notarization config (ENV-GATED — only active when credentials are set):
+  # To enable, set these environment variables:
+  #   CSC_LINK=<path-to-certificate.p12>
+  #   CSC_KEY_PASSWORD=<certificate-password>
+  #   APPLE_ID=<your-apple-id@example.com>
+  #   APPLE_APP_SPECIFIC_PASSWORD=<app-specific-password>
+  #   APPLE_TEAM_ID=<your-team-id>
+  # Then remove or comment out "identity: null" above.
+  # hardenedRuntime: true
+  # gatekeeperAssess: false
+  # notarize:
+  #   teamId: ${APPLE_TEAM_ID}
   target:
     - target: dmg
       arch:
         - arm64
+        - x64
 
 publish: null

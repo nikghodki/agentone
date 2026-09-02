@@ -9,7 +9,10 @@
     "dev:preload": "tsc -p tsconfig.preload.json --watch",
     "dev": "concurrently \"npm run dev:renderer\" \"npm run dev:main\" \"npm run dev:preload\" \"wait-on http://localhost:5173 && electron .\"",
     "clean": "rm -rf dist",
+    "icon": "bash scripts/generate-icon.sh",
+    "stage:node22": "bash scripts/stage-node22.sh",
     "rebuild:electron": "cd node_modules/better-sqlite3 && node-gyp rebuild --target=23.3.13 --arch=arm64 --dist-url=https://electronjs.org/headers",
+    "rebuild:electron:x64": "cd node_modules/better-sqlite3 && node-gyp rebuild --target=23.3.13 --arch=x64 --dist-url=https://electronjs.org/headers",
     "build:renderer": "vite build --config vite.config.ts",
     "build:main": "tsc -p tsconfig.main.json",
     "build:preload": "tsc -p tsconfig.preload.json",
@@ -17,7 +20,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "dist:mac": "npm run stage:node22 && npm run rebuild:electron && electron-builder --mac"
   },
   "keywords": [],
   "author": "",
