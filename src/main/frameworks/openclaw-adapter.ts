@@ -92,7 +92,7 @@ export class OpenclawAdapter implements FrameworkAdapter {
    * Resolve Node-22 bin directory in priority order:
    * 1. Explicit constructor parameter (for tests and production injection)
    * 2. Environment variable OPENCLAW_NODE22_BIN_DIR
-   * 3. Dev-only fallback to spike nvm path
+   * 3. Dev-only fallback to a generic nvm Node 22 location
    */
   private resolveNode22BinDir(explicitPath?: string): string {
     // Priority 1: Explicit constructor parameter
@@ -106,13 +106,13 @@ export class OpenclawAdapter implements FrameworkAdapter {
       return envPath;
     }
 
-    // Priority 3: Dev-only fallback
-    // TODO(prod): production must bundle Node 22 and inject node22BinDir (constructor) or set OPENCLAW_NODE22_BIN_DIR. This dev fallback only works on the original dev box.
+    // Priority 3: Dev-only fallback.
+    // Packaged builds always take Priority 2 (src/main/index.ts injects the
+    // bundled node22-bin dir into OPENCLAW_NODE22_BIN_DIR when app.isPackaged),
+    // so this is only hit in local development — point it at the developer's
+    // nvm-managed Node 22.
     const homeDir = os.homedir();
-    return path.join(
-      homeDir,
-      "workspace/flashlearn/spikes/openclaw-test/.nvm/versions/node/v22.23.2/bin"
-    );
+    return path.join(homeDir, ".nvm", "versions", "node", "v22", "bin");
   }
 
   /**

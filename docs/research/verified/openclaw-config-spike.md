@@ -22,7 +22,7 @@
 Phase 0 identified "config migration complexity" as a PARTIAL blocker. The config file (`~/.openclaw/openclaw.json`) was from version 2026.4.2, but openclaw CLI was version 2026.8.1. The version mismatch caused validation errors:
 
 ```
-Invalid config at /Users/nikhil/.openclaw/openclaw.json:
+Invalid config at $HOME/.openclaw/openclaw.json:
 - meta: Unrecognized key: "lastTouchedAt"
 - gateway.controlUi: Unrecognized key: "allowInsecureAuth"
 - gateway.tailscale: Unrecognized key: "resetOnExit"
@@ -457,7 +457,7 @@ Test Files  12 passed (12)
 ## 10. Artifacts
 
 **Config file:** `~/.openclaw/openclaw.json` (working Ollama config)  
-**Spike directory:** `/Users/nikhil/workspace/flashlearn/spikes/openclaw-test`  
+**Spike directory:** `$(repo root)/spikes/openclaw-test`  
 **Node 22 isolation:** `.nvm/` within spike directory  
 **Test commands:** Documented in section 3
 

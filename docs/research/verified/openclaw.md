@@ -48,7 +48,7 @@ npm install -g openclaw@latest --allow-scripts=openclaw
 From the spike directory:
 
 ```bash
-cd /Users/nikhil/workspace/flashlearn/spikes/openclaw-test
+cd $(repo root)/spikes/openclaw-test
 export NVM_DIR="$(pwd)/.nvm"
 source "$NVM_DIR/nvm.sh"
 nvm use 22
@@ -203,7 +203,7 @@ For desktop app integration, OpenClaw will require:
 
 **Interactive Mode:**
 ```bash
-cd /Users/nikhil/workspace/flashlearn/spikes/openclaw-test
+cd $(repo root)/spikes/openclaw-test
 export NVM_DIR="$(pwd)/.nvm"
 source "$NVM_DIR/nvm.sh"
 nvm use 22

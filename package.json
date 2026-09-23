@@ -1,5 +1,5 @@
 {
-  "name": "flashlearn",
+  "name": "agentone",
   "version": "1.0.0",
   "description": "AgentOne — a desktop launcher and capability manager for agent frameworks (zeptoclaw, hermes, openclaw) with local and cloud model backends.",
   "main": "dist/main/index.js",
@@ -24,7 +24,7 @@
     "dist:mac": "npm run stage:node22 && npm run rebuild:electron && electron-builder --mac"
   },
   "keywords": [],
-  "author": "",
+  "author": "AgentOne Contributors",
   "license": "ISC",
   "devDependencies": {
     "@testing-library/jest-dom": "^7.0.1",

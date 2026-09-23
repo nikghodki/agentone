@@ -20,7 +20,7 @@
 
 **Framework:** OpenClaw 2026.8.1 (ea80657)  
 **Node (Host):** v16.16.0  
-**Node (OpenClaw):** v22.23.2 (isolated: `/Users/nikhil/workspace/flashlearn/spikes/openclaw-test/.nvm/versions/node/v22.23.2/bin`)  
+**Node (OpenClaw):** v22.23.2 (isolated: `$(repo root)/spikes/openclaw-test/.nvm/versions/node/v22.23.2/bin`)  
 **Config:** `~/.openclaw/openclaw.json`  
 **Gateway:** ws://127.0.0.1:18789 (loopback)  
 **Dummy Token:** `123456:DUMMY_TEST_TOKEN_do_not_use`
@@ -350,7 +350,7 @@ v16.16.0
 
 **OpenClaw Node Version:**
 ```bash
-$ export PATH="/Users/nikhil/workspace/flashlearn/spikes/openclaw-test/.nvm/versions/node/v22.23.2/bin:$PATH"
+$ export PATH="$(repo root)/spikes/openclaw-test/.nvm/versions/node/v22.23.2/bin:$PATH"
 $ node -v
 v22.23.2
 ```
@@ -376,7 +376,7 @@ Added Telegram account "default".
 ```
 $ openclaw gateway status
 Service: LaunchAgent (loaded)
-Command: /Users/nikhil/workspace/flashlearn/spikes/openclaw-test/.nvm/versions/node/v22.23.2/bin/node --max-old-space-size=8192 ...
+Command: $(repo root)/spikes/openclaw-test/.nvm/versions/node/v22.23.2/bin/node --max-old-space-size=8192 ...
 Runtime: running (pid 47962, state active)
 Connectivity probe: ok
 Capability: read-only

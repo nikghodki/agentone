@@ -879,7 +879,7 @@ $ node -v
 v16.16.0
 ```
 
-✅ **PASS** - Host node unchanged (OpenClaw invoked via isolated Node 22 in spike directory `/Users/nikhil/workspace/flashlearn/spikes/openclaw-test`)
+✅ **PASS** - Host node unchanged (OpenClaw invoked via isolated Node 22 in spike directory `$(repo root)/spikes/openclaw-test`)
 
 ---
 
@@ -1521,7 +1521,7 @@ $ node -v
 v16.16.0
 ```
 
-✅ **PASS** - Host node unchanged (OpenClaw invoked via isolated Node 22 in `/Users/nikhil/workspace/flashlearn/spikes/openclaw-test`)
+✅ **PASS** - Host node unchanged (OpenClaw invoked via isolated Node 22 in `$(repo root)/spikes/openclaw-test`)
 
 ---
 

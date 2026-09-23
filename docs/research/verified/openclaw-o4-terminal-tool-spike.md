@@ -388,7 +388,7 @@ v16.16.0
 ### Isolated Node 22 Verification
 
 ```bash
-$ /Users/nikhil/workspace/flashlearn/spikes/openclaw-test/.nvm/versions/node/v22.23.2/bin/node -v
+$ $(repo root)/spikes/openclaw-test/.nvm/versions/node/v22.23.2/bin/node -v
 v22.23.2
 ```
 
@@ -398,7 +398,7 @@ v22.23.2
 
 All openclaw invocations used sandboxed PATH:
 ```
-/Users/nikhil/workspace/flashlearn/spikes/openclaw-test/.nvm/versions/node/v22.23.2/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin
+$(repo root)/spikes/openclaw-test/.nvm/versions/node/v22.23.2/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin
 ```
 
 ✅ **PASS** - `~/.local/bin` excluded (Ruling O1 guardrail maintained)
@@ -408,7 +408,7 @@ All openclaw invocations used sandboxed PATH:
 ## Artifacts
 
 **Test scripts:**
-- `/Users/nikhil/workspace/flashlearn/spikes/openclaw-o4-terminal-tool-spike.sh` (comprehensive 3-option test)
+- `$(repo root)/spikes/openclaw-o4-terminal-tool-spike.sh` (comprehensive 3-option test)
 - `/tmp/test-tools-profile.sh` (config profile tests)
 - `/tmp/test-stopreason-regex.sh` (regex verification)
 
@@ -418,7 +418,7 @@ All openclaw invocations used sandboxed PATH:
 - `/tmp/openclaw-o4-test2-output.txt` (headless flags test)
 - `/tmp/openclaw-o4-test3-output.txt` (env vars test)
 
-**Node 22 isolation:** `/Users/nikhil/workspace/flashlearn/spikes/openclaw-test/.nvm/`
+**Node 22 isolation:** `$(repo root)/spikes/openclaw-test/.nvm/`
 
 ---
 
@@ -477,7 +477,7 @@ Each run checked for:
 ```bash
 $ sh -c "openclaw agent --local --message 'What is 2+2? Reply with just the number.' 2>&1"
 Hello, I'm Nova, your AI assistant. I'm here to help you with any questions or tasks you may have. How can I assist you today?
-Attachment: /Users/nikhil/.openclaw/media/tool-speech-synthesis/voice---dfaaa3ef-ddcb-467a-80a9-2d5a2ba12bab.mp3
+Attachment: $HOME/.openclaw/media/tool-speech-synthesis/voice---dfaaa3ef-ddcb-467a-80a9-2d5a2ba12bab.mp3
 [agents/agent-command] [agent] run 25178b50-d20e-4621-9508-91c29c74b884 ended with stopReason=stop
 ```
 
@@ -597,7 +597,7 @@ v16.16.0
 
 **Isolated Node 22:**
 ```bash
-$ /Users/nikhil/workspace/flashlearn/spikes/openclaw-test/.nvm/versions/node/v22.23.2/bin/node -v
+$ $(repo root)/spikes/openclaw-test/.nvm/versions/node/v22.23.2/bin/node -v
 v22.23.2
 ```
 
@@ -630,7 +630,7 @@ v22.23.2
 Hello! I'm delighted to be your new assistant. What would you like to call me?
 
 Please respond with a name that feels comfortable for you.
-Attachment: /Users/nikhil/.openclaw/media/tool-speech-synthesis/voice---173f8a6d-fda5-4015-b78c-969dfe7b0a5a.mp3
+Attachment: $HOME/.openclaw/media/tool-speech-synthesis/voice---173f8a6d-fda5-4015-b78c-969dfe7b0a5a.mp3
 [agents/agent-command] [agent] run 06c60ae2-93a7-4617-84e4-6937b766e910 ended with stopReason=stop
 ```
 
@@ -752,7 +752,7 @@ v16.16.0
 **Isolated Node 22:**
 All openclaw invocations used:
 ```
-/Users/nikhil/workspace/flashlearn/spikes/openclaw-test/.nvm/versions/node/v22.23.2/bin/openclaw
+$(repo root)/spikes/openclaw-test/.nvm/versions/node/v22.23.2/bin/openclaw
 ```
 
 ✅ **PASS** — Node 22 isolation maintained

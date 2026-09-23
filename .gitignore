@@ -13,3 +13,6 @@ src/**/*.d.ts.map
 src/**/*.js.map
 build/node22-bin/
 build/icon-1024.png
+
+# macOS
+.DS_Store

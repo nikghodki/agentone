@@ -45,7 +45,7 @@ The Hermes installer automatically provisions and bundles:
 ```
 $ hermes --version
 Hermes Agent v0.21.0 (2026.8.31) · upstream 8dbf07e9
-Install directory: /Users/nikhil/.hermes/hermes-agent
+Install directory: $HOME/.hermes/hermes-agent
 Install method: git
 Python: 3.11.16
 OpenAI SDK: 2.24.0

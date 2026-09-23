@@ -396,6 +396,8 @@ describe("OpenclawAdapter", () => {
     });
 
     it("falls back to dev path when neither constructor param nor env var set", async () => {
+      // NOTE: asserts the GENERIC nvm fallback (~/.nvm/versions/node/v22/bin),
+      // not a machine-specific path — the repo must not ship dev-box paths.
       const originalEnv = process.env.OPENCLAW_NODE22_BIN_DIR;
       delete process.env.OPENCLAW_NODE22_BIN_DIR;
 
@@ -417,10 +419,12 @@ describe("OpenclawAdapter", () => {
 
         await adapter.install();
 
-        // Verify dev fallback was used (contains spike path)
+        // Verify dev fallback was used (generic nvm Node 22 location)
         const call = mockExecWithArgs.mock.calls[0];
         const binary = call[0];
-        expect(binary).toContain("workspace/flashlearn/spikes/openclaw-test");
+        expect(binary).toBe(
+          path.join(os.homedir(), ".nvm", "versions", "node", "v22", "bin", "openclaw")
+        );
       } finally {
         // Restore original env
         if (originalEnv === undefined) {
@@ -1124,7 +1128,7 @@ Skills (1/1 ready)
         })
         .mockResolvedValueOnce({
           // REAL output when no MCP servers configured
-          stdout: "No OpenClaw-managed MCP servers configured in /Users/nikhil/.openclaw/openclaw.json. Add one with openclaw mcp set <name> '{\"command\":\"uvx\",\"args\":[\"context7-mcp\"]}'.\nNote: this command only shows OpenClaw-managed mcp.servers entries and does not include mcporter servers from config/mcporter.json.",
+          stdout: "No OpenClaw-managed MCP servers configured in $HOME/.openclaw/openclaw.json. Add one with openclaw mcp set <name> '{\"command\":\"uvx\",\"args\":[\"context7-mcp\"]}'.\nNote: this command only shows OpenClaw-managed mcp.servers entries and does not include mcporter servers from config/mcporter.json.",
           stderr: "",
         });
 

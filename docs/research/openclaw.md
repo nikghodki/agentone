@@ -522,4 +522,4 @@ OpenClaw is well-suited for desktop app integration:
 ---
 
 **Report generated:** August 31, 2026  
-**File location:** `/Users/nikhil/workspace/flashlearn/docs/research/openclaw.md`
+**File location:** `$(repo root)/docs/research/openclaw.md`

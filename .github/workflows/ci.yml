@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Host Node is pinned to 16 for source and tests (see README / PACKAGING.md).
+# Node 22 is only needed for packaging, which this workflow does not run.
+env:
+  NODE_VERSION: "16.16.0"
+
+jobs:
+  test:
+    name: Tests (main + renderer, split)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        # Installs + compiles better-sqlite3 for the host Node ABI, which is
+        # exactly what the test suites need (no `rebuild:electron` here).
+        run: npm ci
+
+      - name: Run main-process tests
+        run: npx vitest run tests/main
+
+      - name: Run renderer tests
+        run: npx vitest run tests/renderer

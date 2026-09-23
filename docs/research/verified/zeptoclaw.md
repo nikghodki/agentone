@@ -229,7 +229,7 @@ zeptoclaw skills search <query>
 
 ### Test Evidence
 
-**Test Script:** `/Users/nikhil/workspace/flashlearn/spikes/zeptoclaw-capability-loop.sh`
+**Test Script:** `$(repo root)/spikes/zeptoclaw-capability-loop.sh`
 
 **Test Flow:**
 1. Created skill `capability-loop-test` via `zeptoclaw skills create`
@@ -239,7 +239,7 @@ zeptoclaw skills search <query>
 
 **Output:**
 ```
-Created skill at "/Users/nikhil/.zeptoclaw/skills/capability-loop-test/SKILL.md"
+Created skill at "$HOME/.zeptoclaw/skills/capability-loop-test/SKILL.md"
 
 Skills:
   - capability-loop-test (workspace, ready)

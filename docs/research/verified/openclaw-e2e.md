@@ -132,7 +132,7 @@ const match = line.match(/^\s*-\s+(\S+)\s+\(connected\)/);
 
 **Actual output format (no MCP servers configured):**
 ```
-No OpenClaw-managed MCP servers configured in /Users/nikhil/.openclaw/openclaw.json. Add one with openclaw mcp set <name> '{"command":"uvx","args":["context7-mcp"]}'.
+No OpenClaw-managed MCP servers configured in $HOME/.openclaw/openclaw.json. Add one with openclaw mcp set <name> '{"command":"uvx","args":["context7-mcp"]}'.
 Note: this command only shows OpenClaw-managed mcp.servers entries and does not include mcporter servers from config/mcporter.json.
 ```
 
@@ -441,9 +441,9 @@ if (!result.stdout.toLowerCase().includes("openclaw")) {
 
 ## Artifacts
 
-**Test harness:** `/Users/nikhil/workspace/flashlearn/spikes/openclaw-e2e-test.mjs`  
+**Test harness:** `$(repo root)/spikes/openclaw-e2e-test.mjs`  
 **Config file:** `~/.openclaw/openclaw.json` (working Ollama config)  
-**Node 22 isolation:** `/Users/nikhil/workspace/flashlearn/spikes/openclaw-test/.nvm/`  
+**Node 22 isolation:** `$(repo root)/spikes/openclaw-test/.nvm/`  
 **Test output:** Captured in this document
 
 ---

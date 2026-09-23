@@ -165,7 +165,7 @@ options:
 
 ## 3. OpenClaw
 
-**Binary Location:** `/Users/nikhil/workspace/flashlearn/spikes/openclaw-test/.nvm/versions/node/v22.23.2/bin/openclaw`  
+**Binary Location:** `$(repo root)/spikes/openclaw-test/.nvm/versions/node/v22.23.2/bin/openclaw`  
 **Version:** 2026.8.1 (ea80657)  
 **Requires:** Node.js 22+ (isolated via nvm in spike directory)
 
@@ -403,7 +403,7 @@ $ node -v
 v16.16.0
 ```
 
-**Verification:** OpenClaw was tested using isolated Node 22 via nvm in `/Users/nikhil/workspace/flashlearn/spikes/openclaw-test/.nvm/`. Host node remained unchanged.
+**Verification:** OpenClaw was tested using isolated Node 22 via nvm in `$(repo root)/spikes/openclaw-test/.nvm/`. Host node remained unchanged.
 
 ---
 
@@ -414,7 +414,7 @@ v16.16.0
 ```bash
 # Created test skill
 $ zeptoclaw skills create uninstall-test-skill
-Created skill at "/Users/nikhil/.zeptoclaw/skills/uninstall-test-skill/SKILL.md"
+Created skill at "$HOME/.zeptoclaw/skills/uninstall-test-skill/SKILL.md"
 
 # Verified presence
 $ zeptoclaw skills list | grep uninstall
@@ -437,9 +437,9 @@ $ which zeptoclaw
 /opt/homebrew/bin/zeptoclaw
 
 $ which hermes
-/Users/nikhil/.local/bin/hermes
+$HOME/.local/bin/hermes
 
-$ ls /Users/nikhil/workspace/flashlearn/spikes/openclaw-test/.nvm/versions/node/v22.23.2/bin/openclaw
+$ ls $(repo root)/spikes/openclaw-test/.nvm/versions/node/v22.23.2/bin/openclaw
 (file exists)
 ```
 
